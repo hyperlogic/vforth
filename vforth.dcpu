@@ -336,8 +336,9 @@
         WORD 0x0001
         DAT "="
 :EQUAL
-        SET A, SP
-        IFE [A], [A+1]
+        SET A, POP
+        SET B, POP
+        IFE A, B
         SET PC, EQUAL_ELSE
         SET PUSH, 0x0000
         SET PC, EQUAL_ENDIF
@@ -352,11 +353,12 @@
 ;;; <> ( a b - n )
 :_NOTEQUAL
         WORD _EQUAL
-        WORD 0x0001
-        DAT "="
+        WORD 0x0002
+        DAT "<>"
 :NOTEQUAL
-        SET A, SP
-        IFN [A], [A+1]
+        SET A, POP
+        SET B, POP
+        IFN A, B
         SET PC, NOTEQUAL_ELSE
         SET PUSH, 0x0000
         SET PC, NOTEQUAL_ENDIF
@@ -366,6 +368,135 @@
         SET A, [I]              ; next
         ADD I, 1
         SET PC, A
+
+
+;;; < ( a b - n )
+:_LT
+        WORD _NOTEQUAL
+        WORD 0x0001
+        DAT "<"
+:LT
+        SET A, POP
+        SET B, POP
+        IFG A, B
+        SET PC, LT_ELSE
+        SET PUSH, 0x0000
+        SET PC, LT_ENDIF
+:LT_ELSE
+        IFE A, B
+        SET PUSH, 0x0000
+        IFN A, B
+        SET PUSH, 0xffff
+:LT_ENDIF
+        SET A, [I]              ; next
+        ADD I, 1
+        SET PC, A
+
+
+;;; > ( a b - n )
+:_GT
+        WORD _LT
+        WORD 0x0001
+        DAT ">"
+:GT
+        SET A, POP
+        SET B, POP
+        IFG A, B
+        SET PC, GT_ELSE
+        SET PUSH, 0xffff
+        SET PC, GT_ENDIF
+:GT_ELSE
+        SET PUSH, 0x0000
+:GT_ENDIF
+        SET A, [I]              ; next
+        ADD I, 1
+        SET PC, A
+
+
+;;; <= ( a b - n )
+:_LTE
+        WORD _GT
+        WORD 0x0002
+        DAT "<="
+:LTE
+        SET A, POP
+        SET B, POP
+        IFG A, B
+        SET PC, LTE_ELSE
+        SET PUSH, 0x0000
+        SET PC, LTE_ENDIF
+:LTE_ELSE
+        SET PUSH, 0xffff
+:LTE_ENDIF
+        SET A, [I]              ; next
+        ADD I, 1
+        SET PC, A
+
+
+;;; >= ( a b - n )
+:_GTE
+        WORD _LTE
+        WORD 0x0002
+        DAT ">="
+:GTE
+        SET A, POP
+        SET B, POP
+        IFG A, B
+        SET PC, GTE_ELSE
+        SET PUSH, 0xffff
+        SET PC, GTE_ENDIF
+:GTE_ELSE
+        IFE A, B
+        SET PUSH, 0xffff
+        IFN A, B
+        SET PUSH, 0x0000
+:GTE_ENDIF
+        SET A, [I]              ; next
+        ADD I, 1
+        SET PC, A
+
+
+;;; 0= ( a -- n )   does top of stack equal zero
+:_ISZERO
+        WORD _GTE
+        WORD 0x0002
+        DAT "0="
+:ISZERO
+        SET A, POP
+        IFE A, 0x0000
+        SET PUSH, 0xffff
+        IFN A, 0x0000
+        SET PUSH, 0x0000
+
+        SET A, [I]              ; next
+        ADD I, 1
+        SET PC, A
+
+
+;;; 0<> ( a -- n )   does top of stack not equal zero
+:_ISNOTZERO
+        WORD _ISZERO
+        WORD 0x0003
+        DAT "0<>"
+:ISNOTZERO
+        SET A, POP
+        IFE A, 0x0000
+        SET PUSH, 0x0000
+        IFN A, 0x0000
+        SET PUSH, 0xffff
+
+        SET A, [I]              ; next
+        ADD I, 1
+        SET PC, A
+
+;;; 0< ( a -- n )
+;;; 0> ( a -- n )
+;;; 0<= ( a -- n )
+;;; 0>= ( a -- n )
+;;; AND ( a b -- n )
+;;; OR ( a b -- n )
+;;; XOR ( a b -- n )
+;;; INVERT ( a -- n )
 
 :crash
         WORD 0xeee0             ; crash with illegal opcode

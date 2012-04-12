@@ -1,0 +1,372 @@
+
+;;; next - I takes place of esi, A is eax
+;        SET A, [I]
+;        ADD I, 1
+;        SET PC, A
+
+;;; pushrsp - push I on to return stack - J is ebp
+;        SUB J, 1
+;        SET [J], I
+
+;;; poprsp - pop top of return stack to I - J is ebp
+;        SET I, [J]
+;        ADD J, 1
+
+        SET I, test             ; next word
+        SET J, 0x1000           ; return stack.
+        SET A, [I]              ; next
+        ADD I, 1
+        SET PC, A
+
+;;; test is a test of the forth threaded-code model.
+;;; It simply contains address of 'compiled' words.
+;;; A compiled word has some instructions then a NEXT macro.
+:test
+        WORD push_2
+        WORD push_4
+        WORD OVER
+        WORD show_stack_in_x_y_z
+        WORD crash
+
+;;; For debugging display top 3 items on data stack in registers X Y Z
+:show_stack_in_x_y_z
+        SET A, SP
+        SET X, [A]
+        SET Y, [A+1]
+        SET Z, [A+2]
+        SET A, [I]              ; next
+        ADD I, 1
+        SET PC, A
+
+:push_2
+        SET PUSH, 2
+        SET A, [I]              ; next
+        ADD I, 1
+        SET PC, A
+
+:push_4
+        SET PUSH, 4
+        SET A, [I]              ; next
+        ADD I, 1
+        SET PC, A
+
+;;;  used for non-primtive words
+:DOCOL
+        SUB J, 1                ; push I onto return stack
+        SET [J], I
+        ADD A, 1                ; A points to codeword, so make
+        SET I, A                ; I point to first data word
+        SET A, [I]              ; next
+        ADD I, 1
+        SET PC, A
+
+:EXIT
+;;; TODO:
+
+
+;;;
+;;; PRIMITIVE WORDS
+;;;
+
+;;; DROP ( a -- )
+:_DROP
+        WORD 0x0000             ; first word
+        WORD 0x0004             ; size of string
+        DAT "DROP"
+:DROP
+        SET A, POP              ; drop top of stack
+
+        SET A, [I]              ; next
+        ADD I, 1
+        SET PC, A
+
+
+;;; SWAP ( a b -- b a )
+:_SWAP
+        WORD _DROP              ; previous word
+        WORD 0x0004
+        DAT "SWAP"
+:SWAP
+        SET A, POP              ; swap top to items on stack
+        SET B, POP
+        SET PUSH, A
+        SET PUSH, B
+
+        SET A, [I]              ; next
+        ADD I, 1
+        SET PC, A
+
+
+;;; DUP ( a -- a a )
+:_DUP
+        WORD _SWAP
+        WORD 0x0003
+        DAT "DUP"
+:DUP
+        SET A, SP               ; duplicate top of stack
+        SET B, [A]
+        SET PUSH, B
+        SET A, [I]              ; next
+        ADD I, 1
+        SET PC, A
+
+
+;;; OVER ( a b -- b a b )
+:_OVER
+        WORD _DUP
+        WORD 0x0004
+        DAT "OVER"
+:OVER
+        SET A, SP               ; get second element of stack
+        SET PUSH, [A+1]         ; and push it on top
+
+        SET A, [I]              ; next
+        ADD I, 1
+        SET PC, A
+
+
+;;; ROT ( a b c -- c a b )
+:_ROT
+        WORD _OVER
+        WORD 0x0003
+        DAT "ROT"
+:ROT
+        SET A, POP
+        SET B, POP
+        SET C, POP
+        SET PUSH, B
+        SET PUSH, A
+        SET PUSH, C
+
+        SET A, [I]              ; next
+        ADD I, 1
+        SET PC, A
+
+
+;;; -ROT ( a b c -- b c a )
+:_MINROT
+        WORD _ROT
+        WORD 0x0004
+        DAT "-ROT"
+:MINROT
+        SET A, POP
+        SET B, POP
+        SET C, POP
+        SET PUSH, A
+        SET PUSH, C
+        SET PUSH, B
+
+        SET A, [I]              ; next
+        ADD I, 1
+        SET PC, A
+
+
+;;; 2DROP ( a b -- )
+:_TWODROP
+        WORD _MINROT
+        WORD 0x0005
+        DAT "2DROP"
+:TWODROP
+        SET A, POP
+        SET B, POP
+
+        SET A, [I]              ; next
+        ADD I, 1
+        SET PC, A
+
+
+;;; 2SWAP ( a b c d -- c d a b )
+:_TWOSWAP
+        WORD _TWODROP
+        WORD 0x0005
+        DAT "2SWAP"
+:TWOSWAP
+        SET A, POP
+        SET B, POP
+        SET C, POP
+        SET X, POP
+        SET PUSH, B
+        SET PUSH, A
+        SET PUSH, X
+        SET PUSH, C
+
+        SET A, [I]              ; next
+        ADD I, 1
+        SET PC, A
+
+
+;;; ?DUP ( a -- a a ) if a is non-zero, otherwise ( a -- a )
+:_QDUP
+        WORD _TWOSWAP
+        WORD 0x0004
+        DAT "?DUP"
+:QDUP
+        SET A, SP
+        IFN 0, [A]
+        SET PUSH, [A]
+
+        SET A, [I]              ; next
+        ADD I, 1
+        SET PC, A
+
+
+;;; 1+ ( a -- a+1 )
+:_INCR
+        WORD _QDUP
+        WORD 0x0002
+        DAT "1+"
+:INCR
+        SET A, SP
+        ADD [A], 1
+
+        SET A, [I]              ; next
+        ADD I, 1
+        SET PC, A
+
+
+;;; 1- ( a -- a-1 )
+:_DECR
+        WORD _INCR
+        WORD 0x0002
+        DAT "1-"
+:DECR
+        SET A, SP
+        SUB [A], 1
+
+        SET A, [I]              ; next
+        ADD I, 1
+        SET PC, A
+
+
+;;; + ( a b -- a+b )
+:_ADD
+        WORD _DECR
+        WORD 0x0001
+        DAT "+"
+:ADD_
+        SET A, POP
+        ADD A, POP
+        SET PUSH, A
+
+        SET A, [I]              ; next
+        ADD I, 1
+        SET PC, A
+
+
+;;; - ( a b -- a-b )
+:_SUB
+        WORD _ADD
+        WORD 0x0001
+        DAT "-"
+:SUB_
+        SET A, POP
+        SUB A, POP
+        SET PUSH, A
+
+        SET A, [I]              ; next
+        ADD I, 1
+        SET PC, A
+
+
+;;; * ( a b -- a*b )
+:_MUL
+        WORD _SUB
+        WORD 0x0001
+        DAT "*"
+:MUL_
+        SET A, POP
+        MUL A, POP
+        SET PUSH, A
+
+        SET A, [I]              ; next
+        ADD I, 1
+        SET PC, A
+
+
+;;; / ( a b -- a/b )
+:_DIV
+        WORD _MUL
+        WORD 0x0001
+        DAT "/"
+:DIV_
+        SET A, POP
+        DIV A, POP
+        SET PUSH, A
+
+        SET A, [I]              ; next
+        ADD I, 1
+        SET PC, A
+
+;;; MOD ( a b -- a%b )
+:_MOD
+        WORD _DIV
+        WORD 0x0003
+        DAT "MOD"
+:MOD_
+        SET A, POP
+        MOD A, POP
+        SET PUSH, A
+
+        SET A, [I]              ; next
+        ADD I, 1
+        SET PC, A
+
+;;; /MOD ( a b -- a%b )
+:_DIVMOD
+        WORD _MOD
+        WORD 0x0003
+        DAT "/MOD"
+:DIVMOD
+        SET A, POP
+        SET B, POP
+        SET X, A
+        DIV A, B
+        MOD X, B
+        SET PUSH, X             ; push quotent
+        SET PUSH, A             ; push mod
+
+        SET A, [I]              ; next
+        ADD I, 1
+        SET PC, A
+
+
+;;; = ( a b - n )
+:_EQUAL
+        WORD _DIVMOD
+        WORD 0x0001
+        DAT "="
+:EQUAL
+        SET A, SP
+        IFE [A], [A+1]
+        SET PC, EQUAL_ELSE
+        SET PUSH, 0x0000
+        SET PC, EQUAL_ENDIF
+:EQUAL_ELSE
+        SET PUSH, 0xffff
+:EQUAL_ENDIF
+        SET A, [I]              ; next
+        ADD I, 1
+        SET PC, A
+
+
+;;; <> ( a b - n )
+:_NOTEQUAL
+        WORD _EQUAL
+        WORD 0x0001
+        DAT "="
+:NOTEQUAL
+        SET A, SP
+        IFN [A], [A+1]
+        SET PC, NOTEQUAL_ELSE
+        SET PUSH, 0x0000
+        SET PC, NOTEQUAL_ENDIF
+:NOTEQUAL_ELSE
+        SET PUSH, 0xffff
+:NOTEQUAL_ENDIF
+        SET A, [I]              ; next
+        ADD I, 1
+        SET PC, A
+
+:crash
+        WORD 0xeee0             ; crash with illegal opcode
+

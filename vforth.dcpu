@@ -24,7 +24,7 @@
 :test
         WORD push_2
         WORD push_4
-        WORD OVER
+        WORD LTEZERO
         WORD show_stack_in_x_y_z
         WORD crash
 
@@ -80,7 +80,6 @@
         ADD I, 1
         SET PC, A
 
-
 ;;; SWAP ( a b -- b a )
 :_SWAP
         WORD _DROP              ; previous word
@@ -96,7 +95,6 @@
         ADD I, 1
         SET PC, A
 
-
 ;;; DUP ( a -- a a )
 :_DUP
         WORD _SWAP
@@ -110,7 +108,6 @@
         ADD I, 1
         SET PC, A
 
-
 ;;; OVER ( a b -- b a b )
 :_OVER
         WORD _DUP
@@ -123,7 +120,6 @@
         SET A, [I]              ; next
         ADD I, 1
         SET PC, A
-
 
 ;;; ROT ( a b c -- c a b )
 :_ROT
@@ -142,7 +138,6 @@
         ADD I, 1
         SET PC, A
 
-
 ;;; -ROT ( a b c -- b c a )
 :_MINROT
         WORD _ROT
@@ -160,7 +155,6 @@
         ADD I, 1
         SET PC, A
 
-
 ;;; 2DROP ( a b -- )
 :_TWODROP
         WORD _MINROT
@@ -173,7 +167,6 @@
         SET A, [I]              ; next
         ADD I, 1
         SET PC, A
-
 
 ;;; 2SWAP ( a b c d -- c d a b )
 :_TWOSWAP
@@ -194,7 +187,6 @@
         ADD I, 1
         SET PC, A
 
-
 ;;; ?DUP ( a -- a a ) if a is non-zero, otherwise ( a -- a )
 :_QDUP
         WORD _TWOSWAP
@@ -209,7 +201,6 @@
         ADD I, 1
         SET PC, A
 
-
 ;;; 1+ ( a -- a+1 )
 :_INCR
         WORD _QDUP
@@ -223,7 +214,6 @@
         ADD I, 1
         SET PC, A
 
-
 ;;; 1- ( a -- a-1 )
 :_DECR
         WORD _INCR
@@ -236,7 +226,6 @@
         SET A, [I]              ; next
         ADD I, 1
         SET PC, A
-
 
 ;;; + ( a b -- a+b )
 :_ADD
@@ -252,7 +241,6 @@
         ADD I, 1
         SET PC, A
 
-
 ;;; - ( a b -- a-b )
 :_SUB
         WORD _ADD
@@ -267,7 +255,6 @@
         ADD I, 1
         SET PC, A
 
-
 ;;; * ( a b -- a*b )
 :_MUL
         WORD _SUB
@@ -281,7 +268,6 @@
         SET A, [I]              ; next
         ADD I, 1
         SET PC, A
-
 
 ;;; / ( a b -- a/b )
 :_DIV
@@ -329,7 +315,6 @@
         ADD I, 1
         SET PC, A
 
-
 ;;; = ( a b - n )
 :_EQUAL
         WORD _DIVMOD
@@ -339,16 +324,15 @@
         SET A, POP
         SET B, POP
         IFE A, B
-        SET PC, EQUAL_ELSE
-        SET PUSH, 0x0000
+        SET PC, EQUAL_TRUE
+        SET PUSH, 0
         SET PC, EQUAL_ENDIF
-:EQUAL_ELSE
-        SET PUSH, 0xffff
+:EQUAL_TRUE
+        SET PUSH, -1
 :EQUAL_ENDIF
         SET A, [I]              ; next
         ADD I, 1
         SET PC, A
-
 
 ;;; <> ( a b - n )
 :_NOTEQUAL
@@ -359,16 +343,15 @@
         SET A, POP
         SET B, POP
         IFN A, B
-        SET PC, NOTEQUAL_ELSE
-        SET PUSH, 0x0000
+        SET PC, NOTEQUAL_TRUE
+        SET PUSH, 0
         SET PC, NOTEQUAL_ENDIF
-:NOTEQUAL_ELSE
-        SET PUSH, 0xffff
+:NOTEQUAL_TRUE
+        SET PUSH, -1
 :NOTEQUAL_ENDIF
         SET A, [I]              ; next
         ADD I, 1
         SET PC, A
-
 
 ;;; < ( a b - n )
 :_LT
@@ -379,19 +362,18 @@
         SET A, POP
         SET B, POP
         IFG A, B
-        SET PC, LT_ELSE
-        SET PUSH, 0x0000
+        SET PC, LT_GT
+        SET PUSH, 0
         SET PC, LT_ENDIF
-:LT_ELSE
+:LT_GT
         IFE A, B
-        SET PUSH, 0x0000
+        SET PUSH, 0
         IFN A, B
-        SET PUSH, 0xffff
+        SET PUSH, -1
 :LT_ENDIF
         SET A, [I]              ; next
         ADD I, 1
         SET PC, A
-
 
 ;;; > ( a b - n )
 :_GT
@@ -402,16 +384,15 @@
         SET A, POP
         SET B, POP
         IFG A, B
-        SET PC, GT_ELSE
-        SET PUSH, 0xffff
+        SET PC, GT_FALSE
+        SET PUSH, -1
         SET PC, GT_ENDIF
-:GT_ELSE
-        SET PUSH, 0x0000
+:GT_FALSE
+        SET PUSH, 0
 :GT_ENDIF
         SET A, [I]              ; next
         ADD I, 1
         SET PC, A
-
 
 ;;; <= ( a b - n )
 :_LTE
@@ -422,16 +403,15 @@
         SET A, POP
         SET B, POP
         IFG A, B
-        SET PC, LTE_ELSE
-        SET PUSH, 0x0000
+        SET PC, LTE_TRUE
+        SET PUSH, 0
         SET PC, LTE_ENDIF
-:LTE_ELSE
-        SET PUSH, 0xffff
+:LTE_TRUE
+        SET PUSH, -1
 :LTE_ENDIF
         SET A, [I]              ; next
         ADD I, 1
         SET PC, A
-
 
 ;;; >= ( a b - n )
 :_GTE
@@ -442,19 +422,18 @@
         SET A, POP
         SET B, POP
         IFG A, B
-        SET PC, GTE_ELSE
-        SET PUSH, 0xffff
+        SET PC, GTE_GT
+        SET PUSH, -1
         SET PC, GTE_ENDIF
-:GTE_ELSE
+:GTE_GT
         IFE A, B
-        SET PUSH, 0xffff
+        SET PUSH, -1
         IFN A, B
-        SET PUSH, 0x0000
+        SET PUSH, 0
 :GTE_ENDIF
         SET A, [I]              ; next
         ADD I, 1
         SET PC, A
-
 
 ;;; 0= ( a -- n )   does top of stack equal zero
 :_ISZERO
@@ -463,10 +442,10 @@
         DAT "0="
 :ISZERO
         SET A, POP
-        IFE A, 0x0000
-        SET PUSH, 0xffff
-        IFN A, 0x0000
-        SET PUSH, 0x0000
+        IFE A, 0
+        SET PUSH, -1
+        IFN A, 0
+        SET PUSH, 0
 
         SET A, [I]              ; next
         ADD I, 1
@@ -480,23 +459,147 @@
         DAT "0<>"
 :ISNOTZERO
         SET A, POP
-        IFE A, 0x0000
-        SET PUSH, 0x0000
-        IFN A, 0x0000
-        SET PUSH, 0xffff
+        IFE A, 0
+        SET PUSH, 0
+        IFN A, 0
+        SET PUSH, -1
 
         SET A, [I]              ; next
         ADD I, 1
         SET PC, A
 
 ;;; 0< ( a -- n )
+:_LTZERO
+        WORD _ISNOTZERO
+        WORD 0x0002
+        DAT "0<"
+:LTZERO
+        SET A, POP
+        IFG A, 0
+        SET PC, LTZERO_FALSE
+        IFE A, 0
+        SET PC, LTZERO_FALSE
+        SET PUSH, -1
+        SET PC, LTZERO_ENDIF
+:LTZERO_FALSE
+        SET PUSH, 0
+:LTZERO_ENDIF
+        SET A, [I]              ; next
+        ADD I, 1
+        SET PC, A
+
 ;;; 0> ( a -- n )
+:_GTZERO
+        WORD _LTZERO
+        WORD 0x0002
+        DAT "0>"
+:GTZERO
+        SET A, POP
+        IFG A, 0
+        SET PC, GTZERO_TRUE
+        SET PUSH, 0
+        SET PC, GTZERO_ENDIF
+:GTZERO_TRUE
+        SET PUSH, -1
+:GTZERO_ENDIF
+        SET A, [I]              ; next
+        ADD I, 1
+        SET PC, A
+
 ;;; 0<= ( a -- n )
+:_LTEZERO
+        WORD _LTZERO
+        WORD 0x0003
+        DAT "0<="
+:LTEZERO
+        SET A, POP
+        IFG A, 0
+        SET PC, LTEZERO_FALSE
+        SET PUSH, -1
+        SET PC, LTEZERO_ENDIF
+:LTEZERO_FALSE
+        SET PUSH, 0
+:LTEZERO_ENDIF
+        SET A, [I]              ; next
+        ADD I, 1
+        SET PC, A
+
 ;;; 0>= ( a -- n )
+:_GTEZERO
+        WORD _LTEZERO
+        WORD 0x0003
+        DAT "0>="
+:GTEZERO
+        SET A, POP
+        IFG A, 0
+        SET PC, GTEZERO_TRUE
+        IFE A, 0
+        SET PC, GTEZERO_TRUE
+        SET PUSH, 0
+        SET PC, GTEZERO_ENDIF
+:GTEZERO_TRUE
+        SET PUSH, -1
+:GTEZERO_ENDIF
+        SET A, [I]              ; next
+        ADD I, 1
+        SET PC, A
+
 ;;; AND ( a b -- n )
+:_AND
+        WORD _GTEZERO
+        WORD 0x0003
+        DAT "AND"
+:AND_
+        SET A, POP
+        AND A, POP
+        SET PUSH, A
+
+        SET A, [I]              ; next
+        ADD I, 1
+        SET PC, A
+
 ;;; OR ( a b -- n )
+:_OR
+        WORD _AND
+        WORD 0x0003
+        DAT "OR"
+:OR_
+        SET A, POP
+        BOR A, POP
+        SET PUSH, A
+
+        SET A, [I]              ; next
+        ADD I, 1
+        SET PC, A
+
 ;;; XOR ( a b -- n )
+:_XOR
+        WORD _OR
+        WORD 0x0003
+        DAT "XOR"
+:XOR_
+        SET A, POP
+        XOR A, POP
+        SET PUSH, A
+
+        SET A, [I]              ; next
+        ADD I, 1
+        SET PC, A
+
 ;;; INVERT ( a -- n )
+:_INVERT
+        WORD _XOR
+        WORD 0x0006
+        DAT "INVERT"
+:INVERT
+        SET A, POP
+        XOR A, 0xffff
+        SET PUSH, A
+
+        SET A, [I]              ; next
+        ADD I, 1
+        SET PC, A
+
 
 :crash
         WORD 0xeee0             ; crash with illegal opcode

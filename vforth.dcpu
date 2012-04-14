@@ -11,12 +11,8 @@
 ;;; It simply contains address of 'primitive' words.
 ;;; A primitive word has some instructions then a NEXT macro.
 :test
-        DAT KEY
-        DAT EMIT
-        DAT KEY
-        DAT EMIT
-        DAT KEY
-        DAT EMIT
+        DAT WORD_
+        DAT show_stack_in_x_y_z
         DAT CRASH
 
 ;;; For debugging display top 3 items on parameter stack in registers X Y Z.
@@ -796,17 +792,23 @@
 :_KEY
         DAT _F_LENMASK, 3, "KEY"
 :KEY
+        JSR KEY_FUNC
+        SET PUSH, A
+
+        SET A, [I]              ; next
+        ADD I, 1
+        SET PC, A
+
+;;; RETURNS next key in A
+:KEY_FUNC
         SET A, [CUR_KEY]
         IFN [A], 0
         SET PC, KEY_VALID
         SET PC, CRASH           ; crash on end of input
 :KEY_VALID
         ADD [CUR_KEY], 1
-        SET PUSH, [A]
-
-        SET A, [I]              ; next
-        ADD I, 1
-        SET PC, A
+        SET A, [A]
+        SET PC, POP
 
 ;;; KEY variables
 :CUR_KEY
@@ -833,6 +835,43 @@
         DAT 0x8000
 :SCREEN
         DAT 0x8000
+
+;;; WORD ( -- ptr len ) returns length and ptr to word string
+:_WORD
+        DAT _EMIT, 4, "WORD"
+:WORD_
+        JSR KEY_FUNC
+        IFE A, 0x005c          ; if backslash, skip the comment
+        SET PC, WORD_3
+        IFE A, 0x0020          ; if space, keep looking
+        SET PC, WORD_
+
+        ;; search for end of word storing characters as we go
+        SET X, WORD_BUFFER      ; x is ptr into word_buffer
+:WORD_2
+        SET [X], A
+        ADD X, 1
+        JSR KEY_FUNC
+        IFN A, 0x0020           ; if not space keep looping
+        SET PC, WORD_2
+
+        SUB X, WORD_BUFFER      ; calc length
+        SET PUSH, X             ; push length
+        SET PUSH, WORD_BUFFER   ; push str addr
+
+        SET A, [I]              ; next
+        ADD I, 1
+        SET PC, A
+
+        ;; skip until new-line
+:WORD_3
+        JSR KEY_FUNC
+        IFN A, 0x000a           ; new line
+        SET PC, WORD_3
+        SET PC, WORD_
+
+:WORD_BUFFER
+        DAT "0123456789abcdef0123456789abcdef"  ; 32-char word buffer
 
 :CRASH
         DAT 0xeee0             ; crash with illegal opcode

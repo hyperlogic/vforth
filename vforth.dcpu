@@ -8,14 +8,16 @@
         SET PC, A
 
 ;;; test is a test of the forth threaded-code model.
-;;; It simply contains address of 'compiled' words.
-;;; A compiled word has some instructions then a NEXT macro.
+;;; It simply contains address of 'primitive' words.
+;;; A primitive word has some instructions then a NEXT macro.
 :test
-        WORD push_2
-        WORD push_4
-        WORD DP
-        WORD show_stack_in_x_y_z
-        WORD CRASH
+        DAT KEY
+        DAT EMIT
+        DAT KEY
+        DAT EMIT
+        DAT KEY
+        DAT EMIT
+        DAT CRASH
 
 ;;; For debugging display top 3 items on parameter stack in registers X Y Z.
 ;;; Z is top of stack.
@@ -51,7 +53,7 @@
         SET PC, A
 
 ;;;
-;;; PRIMITIVE WORDS
+;;; Primitive words
 ;;;
 
 ;;; DROP ( x -- ) remove x from the stack
@@ -278,7 +280,7 @@
         SET PUSH, 0
         SET PC, EQUAL_ENDIF
 :EQUAL_TRUE
-        SET PUSH, -1
+        SET PUSH, 0xffff
 :EQUAL_ENDIF
         SET A, [I]              ; next
         ADD I, 1
@@ -295,7 +297,7 @@
         SET PUSH, 0
         SET PC, NOTEQUAL_ENDIF
 :NOTEQUAL_TRUE
-        SET PUSH, -1
+        SET PUSH, 0xffff
 :NOTEQUAL_ENDIF
         SET A, [I]              ; next
         ADD I, 1
@@ -315,7 +317,7 @@
         IFE A, B
         SET PUSH, 0
         IFN A, B
-        SET PUSH, -1
+        SET PUSH, 0xffff
 :LT_ENDIF
         SET A, [I]              ; next
         ADD I, 1
@@ -329,7 +331,7 @@
         SET B, POP
         IFG A, B
         SET PC, GT_FALSE
-        SET PUSH, -1
+        SET PUSH, 0xffff
         SET PC, GT_ENDIF
 :GT_FALSE
         SET PUSH, 0
@@ -349,7 +351,7 @@
         SET PUSH, 0
         SET PC, LTE_ENDIF
 :LTE_TRUE
-        SET PUSH, -1
+        SET PUSH, 0xffff
 :LTE_ENDIF
         SET A, [I]              ; next
         ADD I, 1
@@ -363,11 +365,11 @@
         SET B, POP
         IFG A, B
         SET PC, GTE_GT
-        SET PUSH, -1
+        SET PUSH, 0xffff
         SET PC, GTE_ENDIF
 :GTE_GT
         IFE A, B
-        SET PUSH, -1
+        SET PUSH, 0xffff
         IFN A, B
         SET PUSH, 0
 :GTE_ENDIF
@@ -381,7 +383,7 @@
 :ISZERO
         SET A, POP
         IFE A, 0
-        SET PUSH, -1
+        SET PUSH, 0xffff
         IFN A, 0
         SET PUSH, 0
 
@@ -398,7 +400,7 @@
         IFE A, 0
         SET PUSH, 0
         IFN A, 0
-        SET PUSH, -1
+        SET PUSH, 0xffff
 
         SET A, [I]              ; next
         ADD I, 1
@@ -413,7 +415,7 @@
         SET PC, LTZERO_FALSE
         IFE A, 0
         SET PC, LTZERO_FALSE
-        SET PUSH, -1
+        SET PUSH, 0xffff
         SET PC, LTZERO_ENDIF
 :LTZERO_FALSE
         SET PUSH, 0
@@ -432,7 +434,7 @@
         SET PUSH, 0
         SET PC, GTZERO_ENDIF
 :GTZERO_TRUE
-        SET PUSH, -1
+        SET PUSH, 0xffff
 :GTZERO_ENDIF
         SET A, [I]              ; next
         ADD I, 1
@@ -445,7 +447,7 @@
         SET A, POP
         IFG A, 0
         SET PC, LTEZERO_FALSE
-        SET PUSH, -1
+        SET PUSH, 0xffff
         SET PC, LTEZERO_ENDIF
 :LTEZERO_FALSE
         SET PUSH, 0
@@ -466,7 +468,7 @@
         SET PUSH, 0
         SET PC, GTEZERO_ENDIF
 :GTEZERO_TRUE
-        SET PUSH, -1
+        SET PUSH, 0xffff
 :GTEZERO_ENDIF
         SET A, [I]              ; next
         ADD I, 1
@@ -632,7 +634,7 @@
 
 ;;; RDROP ( -- ) drop top of return stack
 :_RDROP
-        DATA _RSPSTORE, 5, "RDROP"
+        DAT _RSPSTORE, 5, "RDROP"
 :RDROP
         ADD J, 1
 
@@ -642,7 +644,7 @@
 
 ;;; DSP@ ( -- x ) fetch top of parameter stack
 :_DSPFETCH
-        DATA _RDROP, 4, "DSP@"
+        DAT _RDROP, 4, "DSP@"
 :DSPFETCH
         SET PUSH, SP
 
@@ -652,7 +654,7 @@
 
 ;;; DSP! ( x -- ) store top of parameter stack
 :_DSPSTORE
-        DATA _DSPFETCH, 4, "DSP!"
+        DAT _DSPFETCH, 4, "DSP!"
 :DSPSTORE
         SET A, POP
         SET SP, A
@@ -666,7 +668,7 @@
 ;;;
 
 :STATE_VAR
-        DAT 0                   ; -1 if in compile mode
+        DAT 0                   ; 0xffff if in compile mode
 :DP_VAR
         DAT END                 ; free memory ptr
 :LATEST_VAR
@@ -790,7 +792,49 @@
         ADD I, 1
         SET PC, A
 
+;;; KEY ( -- key ) currently reads from INPUT_STRING
+:_KEY
+        DAT _F_LENMASK, 3, "KEY"
+:KEY
+        SET A, [CUR_KEY]
+        IFN [A], 0
+        SET PC, KEY_VALID
+        SET PC, CRASH           ; crash on end of input
+:KEY_VALID
+        ADD [CUR_KEY], 1
+        SET PUSH, [A]
+
+        SET A, [I]              ; next
+        ADD I, 1
+        SET PC, A
+
+;;; KEY variables
+:CUR_KEY
+        DAT INPUT_STRING
+:INPUT_STRING
+        DAT "ABC DEF", 0
+
+;;; EMIT ( key -- ) currently just dumps into SCREEN
+:_EMIT
+        DAT _KEY, 4, "EMIT"
+:EMIT
+        SET A, POP
+        BOR A, 0xF000           ; make it white
+        SET B, [CURSOR]
+        SET [B], A
+        ADD [CURSOR], 1
+
+        SET A, [I]              ; next
+        ADD I, 1
+        SET PC, A
+
+;;; EMIT variables
+:CURSOR
+        DAT 0x8000
+:SCREEN
+        DAT 0x8000
+
 :CRASH
-        WORD 0xeee0             ; crash with illegal opcode
+        DAT 0xeee0             ; crash with illegal opcode
 
 :END

@@ -26,18 +26,6 @@
         ADD I, 1
         SET PC, A
 
-:push_2
-        SET PUSH, 2
-        SET A, [I]              ; next
-        ADD I, 1
-        SET PC, A
-
-:push_4
-        SET PUSH, 4
-        SET A, [I]              ; next
-        ADD I, 1
-        SET PC, A
-
 ;;; used interpret compiled words
 :DOCOL
         SUB J, 1                ; push I onto return stack

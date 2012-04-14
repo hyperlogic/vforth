@@ -1,5 +1,5 @@
 all: vforth.hex
 	dcpu vforth.hex
 
-vforth.hex : vforth.dcpu
+vforth.hex : vforth.dasm
 	a16 -o $@ -O hex $<

@@ -12,16 +12,39 @@
 ;;; A primitive word has some instructions then a NEXT macro.
 :test
         DAT WORD_
-        DAT show_stack_in_x_y_z
+        DAT NUMBER
+        DAT SHOW_STACK_IN_XYZ
         DAT CRASH
 
 ;;; For debugging display top 3 items on parameter stack in registers X Y Z.
 ;;; Z is top of stack.
-:show_stack_in_x_y_z
+:SHOW_STACK_IN_XYZ
         SET A, SP
         SET X, [A+2]
         SET Y, [A+1]
         SET Z, [A]
+        SET A, [I]              ; next
+        ADD I, 1
+        SET PC, A
+
+;;; EMIT_WORD ( addr, len -- ) For debugging display thing returned by WORD on screen 
+:EMIT_WORD
+        SET A, POP              ; A <- len
+        SET B, POP              ; B <- addr
+        SET C, 0                ; C is loop counter
+:EMIT_WORD_EACH_CHAR
+        IFE C, A
+        SET PC, EMIT_END_LOOP
+        SET X, 0x8000
+        ADD X, C                ; X <- output ptr
+        SET Y, B                ; Y <- input ptr
+        ADD Y, C
+        SET Z, [Y]
+        BOR Z, 0xf000
+        SET [X], Z
+        ADD C, 1
+        SET PC, EMIT_WORD_EACH_CHAR
+:EMIT_END_LOOP
         SET A, [I]              ; next
         ADD I, 1
         SET PC, A
@@ -800,9 +823,9 @@
 
 ;;; KEY variables
 :CUR_KEY
-        DAT INPUT_STRING
-:INPUT_STRING
-        DAT "ABC DEF", 0
+        DAT INPUT_BUFFER
+:INPUT_BUFFER
+        DAT "65535", 0x20, 0
 
 ;;; EMIT ( key -- ) currently just dumps into SCREEN
 :_EMIT
@@ -825,43 +848,107 @@
         DAT 0x8000
 
 ;;; WORD ( -- ptr len ) returns length and ptr to word string
+;;; TODO: handle null at end of word instead of just space
 :_WORD
         DAT _EMIT, 4, "WORD"
 :WORD_
-        JSR KEY_FUNC
-        IFE A, 0x005c          ; if backslash, skip the comment
-        SET PC, WORD_3
-        IFE A, 0x0020          ; if space, keep looking
-        SET PC, WORD_
-
-        ;; search for end of word storing characters as we go
-        SET X, WORD_BUFFER      ; x is ptr into word_buffer
-:WORD_2
-        SET [X], A
-        ADD X, 1
-        JSR KEY_FUNC
-        IFN A, 0x0020           ; if not space keep looping
-        SET PC, WORD_2
-
-        SUB X, WORD_BUFFER      ; calc length
-        SET PUSH, X             ; push length
-        SET PUSH, WORD_BUFFER   ; push str addr
+        JSR WORD_FUNC
+        SET PUSH, B
+        SET PUSH, A
 
         SET A, [I]              ; next
         ADD I, 1
         SET PC, A
 
+;;; returns len in A, ptr in B
+:WORD_FUNC
+:WORD_SKIP_SPACE
+        JSR KEY_FUNC
+        IFE A, 0x005c          ; if backslash, skip the comment
+        SET PC, WORD_SKIP_LINE
+        IFE A, 0x0020          ; if space, keep looking
+        SET PC, WORD_SKIP_SPACE
+
+        ;; search for end of word storing characters as we go
+        SET X, WORD_BUFFER      ; x is ptr into word_buffer
+:WORD_EACH_CHAR
+        SET [X], A
+        ADD X, 1
+        JSR KEY_FUNC
+        IFN A, 0x0020           ; if not space keep looping
+        SET PC, WORD_EACH_CHAR
+
+        SUB X, WORD_BUFFER      ; calc length
+        SET A, X                ; A <- length
+        SET B, WORD_BUFFER      ; B <- str addr
+        SET PC, POP             ; return
+
         ;; skip until new-line
-:WORD_3
+:WORD_SKIP_LINE
         JSR KEY_FUNC
         IFN A, 0x000a           ; new line
-        SET PC, WORD_3
-        SET PC, WORD_
+        SET PC, WORD_SKIP_LINE
+        SET PC, WORD_FUNC
 
+
+;;; WORD variables
 :WORD_BUFFER
         DAT "0123456789abcdef0123456789abcdef"  ; 32-char word buffer
 
+
+;;; NUMBER ( ptr len -- number unconverted-characters )
+;;; reads from BASE_VAR
+:_NUMBER
+        DAT _WORD, 6, "NUMBER"
+:NUMBER
+        SET A, POP              ; A <- len
+        SET B, POP              ; B <- ptr
+        JSR NUMBER_FUNC
+        SET PUSH, B             ; number
+        SET PUSH, A             ; unconverted chars
+
+        SET A, [I]              ; next
+        ADD I, 1
+        SET PC, A
+
+;;; input A is len, B is ptr
+;;; output A is num unconverted chars, B is result
+:NUMBER_FUNC
+        IFE A, 0                ; zero-length string
+        SET PC, NUMBER_EMPTY_STR
+
+;;; start at end of string
+        SET X, B                ; X is work ptr
+        ADD X, A
+        SUB X, 1
+
+        SET C, 1                ; C is factor
+        SET B, 0                ; B is number
+
+:NUMBER_LOOP
+        SET Y, [X]              ; read char into Y
+
+;;;  TODO: ERROR out if char is out of base range.
+;;;  TODO: HANDLE A-Z (a-z)
+        SUB Y, 0x30             ; 0x30 is 0 - convert digit into number
+        MUL Y, C                ; multiply number by factor
+        ADD B, Y                ; accumulate result in B
+
+        SUB X, 1                ; move str ptr
+        SUB A, 1                ; we converted one character!
+        MUL C, [BASE_VAR]       ; factor *= base
+
+        IFN A, 0
+        SET PC, NUMBER_LOOP
+
+        SET PC, POP             ; done!
+
+:NUMBER_EMPTY_STR
+        SET A, 0
+        SET B, 0
+        SET PC, POP             ; return
+
 :CRASH
-        DAT 0xeee0             ; crash with illegal opcode
+        DAT 0xeee0              ; crash with illegal opcode
 
 :END

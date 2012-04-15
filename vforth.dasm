@@ -12,7 +12,8 @@
 ;;; A primitive word has some instructions then a NEXT macro.
 :test
         DAT WORD_
-        DAT EMIT_WORD
+        DAT PAREN_FIND
+        DAT SHOW_STACK_IN_XYZ
         DAT CRASH
 
 ;;; For debugging display top 3 items on parameter stack in registers X Y Z.
@@ -65,7 +66,9 @@
 ;;;
 ;;; struct header {
 ;;;     header* prev;
-;;;     word len;
+;;;     word immediate:1;  // msb immediate flag
+;;;     word hidden:1;     // hidden flag
+;;;     word len:14;
 ;;;     word len[0];  // len words
 ;;; };
 ;;;
@@ -809,7 +812,7 @@
         ADD I, 1
         SET PC, A
 
-;;; KEY ( -- key ) currently reads from INPUT_STRING
+;;; KEY ( -- key ) currently reads from INPUT_BUFFER
 :_KEY
         DAT _F_LENMASK, 3, "KEY", KEY
 :KEY
@@ -835,7 +838,7 @@
 :CUR_KEY
         DAT INPUT_BUFFER
 :INPUT_BUFFER
-        DAT "65535", 0x20, 0
+        DAT "NUMBER", 0x20, 0
 
 ;;; EMIT ( key -- ) currently just dumps into SCREEN
 :_EMIT
@@ -959,7 +962,7 @@
         SET PC, POP             ; return
 
 ;;; (FIND) ( addr len -- dictionary-header-addr )  looks up word in dictionary
-;;; uses LATEST_VAR
+;;; doesnt find words flagged as hidden
 :_PAREN_FIND
         DAT _NUMBER, 6, "(FIND)", PAREN_FIND
 :PAREN_FIND
@@ -976,10 +979,38 @@
 ;;; output: dictionary header addr, or 0 if none found.
 :FIND_FUNC
         SET X, [LATEST_VAR]
+:FIND_WORD_LOOP
         IFE X, 0                ; end of dictionary
         SET PC, FIND_NOT_FOUND
 
-        IFE A, [X+1]
+        SET C, [X+1]            ; B <- len
+        AND C, 0xefff           ; mask out immediate flag, but include hidden flag
+        IFN A, C                ; compare lengths, This will exclude hidden words.
+        SET PC, FIND_NEXT_WORD
+
+        ;; compare strings
+        SET C, 0                ; loop index
+:FIND_STRCMP_LOOP
+        IFE C, A
+        SET PC, FIND_STRCMP_SUCCESS
+        SET Y, B
+        ADD Y, C                ; y <- search-string + c
+        SET Z, X
+        ADD Z, 2
+        ADD Z, C                ; z <- dict-string + c
+        IFN [Y], [Z]
+        SET PC, FIND_STRCMP_FAIL
+        ADD C, 1
+        SET PC, FIND_STRCMP_LOOP
+
+:FIND_STRCMP_SUCCESS
+        SET A, X
+        SET PC, POP             ; return header addr
+
+:FIND_STRCMP_FAIL
+:FIND_NEXT_WORD
+        SET X, [X]              ; follow prev ptr
+        SET PC, FIND_WORD_LOOP
 
 :FIND_NOT_FOUND
         SET A, 0

@@ -12,8 +12,7 @@
 ;;; A primitive word has some instructions then a NEXT macro.
 :test
         DAT WORD_
-        DAT NUMBER
-        DAT SHOW_STACK_IN_XYZ
+        DAT EMIT_WORD
         DAT CRASH
 
 ;;; For debugging display top 3 items on parameter stack in registers X Y Z.
@@ -62,10 +61,21 @@
 ;;;
 ;;; Primitive words
 ;;;
+;;; each word has a header
+;;;
+;;; struct header {
+;;;     header* prev;
+;;;     word len;
+;;;     word len[0];  // len words
+;;; };
+;;;
+;;; The first word after the header is the address of the code implmenting the
+;;; word.
+;;;
 
 ;;; DROP ( x -- ) remove x from the stack
 :_DROP
-        DAT 0, 4, "DROP"        ; first word, size of string, string name of word
+        DAT 0, 4, "DROP", DROP  ; first word, size of string, string name of word
 :DROP
         SET A, POP              ; drop top of stack
 
@@ -75,7 +85,7 @@
 
 ;;; SWAP ( x1 x2 -- x2 x1 ) exchange the top two stack items
 :_SWAP
-        DAT _DROP, 4, "SWAP"
+        DAT _DROP, 4, "SWAP", SWAP
 :SWAP
         SET A, POP              ; swap top to items on stack
         SET B, POP
@@ -88,7 +98,7 @@
 
 ;;; DUP ( x -- x x ) duplicate top of stack
 :_DUP
-        DAT _SWAP, 3, "DUP"
+        DAT _SWAP, 3, "DUP", DUP
 :DUP
         SET A, SP               ; duplicate top of stack
         SET B, [A]
@@ -99,7 +109,7 @@
 
 ;;; OVER ( x1 x2 -- x1 x2 x1 )
 :_OVER
-        DAT _DUP, 4, "OVER"
+        DAT _DUP, 4, "OVER", OVER
 :OVER
         SET A, SP               ; get second element of stack
         SET PUSH, [A+1]         ; and push it on top
@@ -110,7 +120,7 @@
 
 ;;; ROT ( a b c -- c a b )
 :_ROT
-        DAT _OVER, 3, "ROT"
+        DAT _OVER, 3, "ROT", ROT
 :ROT
         SET A, POP
         SET B, POP
@@ -125,7 +135,7 @@
 
 ;;; -ROT ( a b c -- b c a )
 :_MINROT
-        DAT _ROT, 4, "-ROT"
+        DAT _ROT, 4, "-ROT", MINROT
 :MINROT
         SET A, POP
         SET B, POP
@@ -140,7 +150,7 @@
 
 ;;; 2DROP ( a b -- )
 :_TWODROP
-        DAT _MINROT, 5, "2DROP"
+        DAT _MINROT, 5, "2DROP", TWODROP
 :TWODROP
         SET A, POP
         SET B, POP
@@ -151,7 +161,7 @@
 
 ;;; 2SWAP ( a b c d -- c d a b )
 :_TWOSWAP
-        DAT _TWODROP, 5, "2SWAP"
+        DAT _TWODROP, 5, "2SWAP", TWOSWAP
 :TWOSWAP
         SET A, POP
         SET B, POP
@@ -168,7 +178,7 @@
 
 ;;; ?DUP ( a -- a a ) if a is non-zero, otherwise ( a -- a )
 :_QDUP
-        DAT _TWOSWAP, 4, "?DUP"
+        DAT _TWOSWAP, 4, "?DUP", QDUP
 :QDUP
         SET A, SP
         IFN 0, [A]
@@ -180,7 +190,7 @@
 
 ;;; 1+ ( a -- a+1 )
 :_INCR
-        DAT _QDUP, 2, "1+"
+        DAT _QDUP, 2, "1+", INCR
 :INCR
         SET A, SP
         ADD [A], 1
@@ -191,7 +201,7 @@
 
 ;;; 1- ( a -- a-1 )
 :_DECR
-        DAT _INCR, 2, "1-"
+        DAT _INCR, 2, "1-", DECR
 :DECR
         SET A, SP
         SUB [A], 1
@@ -202,7 +212,7 @@
 
 ;;; + ( a b -- a+b )
 :_ADD
-        DAT _DECR, 1, "+"
+        DAT _DECR, 1, "+", ADD_
 :ADD_
         SET A, POP
         ADD A, POP
@@ -214,7 +224,7 @@
 
 ;;; - ( a b -- a-b )
 :_SUB
-        DAT _ADD, 1, "-"
+        DAT _ADD, 1, "-", SUB_
 :SUB_
         SET A, POP
         SUB A, POP
@@ -226,7 +236,7 @@
 
 ;;; * ( a b -- a*b )
 :_MUL
-        DAT _SUB, 1, "*"
+        DAT _SUB, 1, "*", MUL_
 :MUL_
         SET A, POP
         MUL A, POP
@@ -238,7 +248,7 @@
 
 ;;; / ( a b -- a/b )
 :_DIV
-        DAT _MUL, 1, "/"
+        DAT _MUL, 1, "/", DIV_
 :DIV_
         SET A, POP
         DIV A, POP
@@ -250,7 +260,7 @@
 
 ;;; MOD ( a b -- a%b )
 :_MOD
-        DAT _DIV, 3, "MOD"
+        DAT _DIV, 3, "MOD", MOD_
 :MOD_
         SET A, POP
         MOD A, POP
@@ -262,7 +272,7 @@
 
 ;;; /MOD ( a b -- a%b )
 :_DIVMOD
-        DAT _MOD, 4, "/MOD"
+        DAT _MOD, 4, "/MOD", DIVMOD
 :DIVMOD
         SET A, POP
         SET B, POP
@@ -278,7 +288,7 @@
 
 ;;; = ( a b - n )
 :_EQUAL
-        DAT _DIVMOD, 1, "="
+        DAT _DIVMOD, 1, "=", EQUAL
 :EQUAL
         SET A, POP
         SET B, POP
@@ -295,7 +305,7 @@
 
 ;;; <> ( a b - n )
 :_NOTEQUAL
-        DAT _EQUAL, 2, "<>"
+        DAT _EQUAL, 2, "<>", NOTEQUAL
 :NOTEQUAL
         SET A, POP
         SET B, POP
@@ -312,7 +322,7 @@
 
 ;;; < ( a b - n )
 :_LT
-        DAT _NOTEQUAL, 1, "<"
+        DAT _NOTEQUAL, 1, "<", LT
 :LT
         SET A, POP
         SET B, POP
@@ -332,7 +342,7 @@
 
 ;;; > ( a b - n )
 :_GT
-        DAT _LT, 1, ">"
+        DAT _LT, 1, ">", GT
 :GT
         SET A, POP
         SET B, POP
@@ -349,7 +359,7 @@
 
 ;;; <= ( a b - n )
 :_LTE
-        DAT _GT, 2, "<="
+        DAT _GT, 2, "<=", LTE
 :LTE
         SET A, POP
         SET B, POP
@@ -366,7 +376,7 @@
 
 ;;; >= ( a b - n )
 :_GTE
-        DAT _LTE, 2, ">="
+        DAT _LTE, 2, ">=", GTE
 :GTE
         SET A, POP
         SET B, POP
@@ -386,7 +396,7 @@
 
 ;;; 0= ( a -- n )   does top of stack equal zero
 :_ISZERO
-        DAT _GTE, 2, "0="
+        DAT _GTE, 2, "0=", ISZERO
 :ISZERO
         SET A, POP
         IFE A, 0
@@ -401,7 +411,7 @@
 
 ;;; 0<> ( a -- n )   does top of stack not equal zero
 :_ISNOTZERO
-        DAT _ISZERO, 3, "0<>"
+        DAT _ISZERO, 3, "0<>", ISNOTZERO
 :ISNOTZERO
         SET A, POP
         IFE A, 0
@@ -415,7 +425,7 @@
 
 ;;; 0< ( a -- n )
 :_LTZERO
-        DAT _ISNOTZERO, 2, "0<"
+        DAT _ISNOTZERO, 2, "0<", LTZERO
 :LTZERO
         SET A, POP
         IFG A, 0
@@ -433,7 +443,7 @@
 
 ;;; 0> ( a -- n )
 :_GTZERO
-        DAT _LTZERO, 2, "0>"
+        DAT _LTZERO, 2, "0>", GTZERO
 :GTZERO
         SET A, POP
         IFG A, 0
@@ -449,7 +459,7 @@
 
 ;;; 0<= ( a -- n )
 :_LTEZERO
-        DAT _LTZERO, 3, "0<="
+        DAT _LTZERO, 3, "0<=", LTEZERO
 :LTEZERO
         SET A, POP
         IFG A, 0
@@ -465,7 +475,7 @@
 
 ;;; 0>= ( a -- n )
 :_GTEZERO
-        DAT _LTEZERO, 3, "0>="
+        DAT _LTEZERO, 3, "0>=", GTEZERO
 :GTEZERO
         SET A, POP
         IFG A, 0
@@ -483,7 +493,7 @@
 
 ;;; AND ( a b -- n )
 :_AND
-        DAT _GTEZERO, 3, "AND"
+        DAT _GTEZERO, 3, "AND", AND_
 :AND_
         SET A, POP
         AND A, POP
@@ -495,7 +505,7 @@
 
 ;;; OR ( a b -- n )
 :_OR
-        DAT _AND, 2, "OR"
+        DAT _AND, 2, "OR", OR_
 :OR_
         SET A, POP
         BOR A, POP
@@ -507,7 +517,7 @@
 
 ;;; XOR ( a b -- n )
 :_XOR
-        DAT _OR, 3, "XOR"
+        DAT _OR, 3, "XOR", XOR_
 :XOR_
         SET A, POP
         XOR A, POP
@@ -519,7 +529,7 @@
 
 ;;; INVERT ( a -- n )
 :_INVERT
-        DAT _XOR, 6, "INVERT"
+        DAT _XOR, 6, "INVERT", INVERT
 :INVERT
         SET A, POP
         XOR A, 0xffff
@@ -531,7 +541,7 @@
 
 ;;; EXIT ( -- )  Used to exit compiled words
 :_EXIT
-        DAT _INVERT, 4, "EXIT"
+        DAT _INVERT, 4, "EXIT", EXIT
 :EXIT
         SET I, [J]              ; pop return stack into I
         ADD J, 1
@@ -542,7 +552,7 @@
 
 ;;; LIT ( -- )
 :_LIT
-        DAT _EXIT, 3, "LIT"
+        DAT _EXIT, 3, "LIT", LIT
 :LIT
         SET PUSH, [I]           ; push next 16-bit word onto parameter stack
         ADD I, 1                ; skip it
@@ -553,7 +563,7 @@
 
 ;;; ! ( data addr -- ) store data at given addr
 :_STORE
-        DAT _LIT, 1, "!"
+        DAT _LIT, 1, "!", STORE
 :STORE
         SET A, POP
         SET [A], POP
@@ -564,7 +574,7 @@
 
 ;;; @ ( addr -- data ) fetch data at given addr
 :_FETCH
-        DAT _STORE, 1, "@"
+        DAT _STORE, 1, "@", FETCH
 :FETCH
         SET A, POP
         SET PUSH, [A]
@@ -575,7 +585,7 @@
 
 ;;; +! ( amount addr -- ) add amount to data at given addr
 :_ADDSTORE
-        DAT _FETCH, 2, "+!"
+        DAT _FETCH, 2, "+!", ADDSTORE
 :ADDSTORE
         SET A, POP
         ADD [A], POP
@@ -586,7 +596,7 @@
 
 ;;; -! ( amount addr -- ) subtract amount to data at given addr
 :_SUBSTORE
-        DAT _ADDSTORE, 2, "+!"
+        DAT _ADDSTORE, 2, "+!", SUBSTORE
 :SUBSTORE
         SET A, POP
         SUB [A], POP
@@ -597,7 +607,7 @@
 
 ;;; >R ( x -- ) push x onto return stack
 :_RSPPUSH
-        DAT _SUBSTORE, 2, ">R"
+        DAT _SUBSTORE, 2, ">R", RSPPUSH
 :RSPPUSH
         SET A, POP              ; pop from param stack
         SUB J, 1                ; push onto return stack
@@ -609,7 +619,7 @@
 
 ;;; <R ( -- x ) pop top of return stack
 :_RSPPOP
-        DAT _RSPPUSH, 2, "<R"
+        DAT _RSPPUSH, 2, "<R", RSPPOP
 :RSPPOP
         SET A, [J]              ; pop off of return stack
         ADD J, 1
@@ -621,7 +631,7 @@
 
 ;;; RSP@ ( -- x ) fetch top of return stack
 :_RSPFETCH
-        DAT _RSPPOP, 4, "RSP@"
+        DAT _RSPPOP, 4, "RSP@", RSPFETCH
 :RSPFETCH
         SET PUSH, J
 
@@ -631,7 +641,7 @@
 
 ;;; RSP! ( x -- ) store top of return stack
 :_RSPSTORE
-        DAT _RSPFETCH, 4, "RSP!"
+        DAT _RSPFETCH, 4, "RSP!", RSPSTORE
 :RSPSTORE
         SET J, POP
 
@@ -641,7 +651,7 @@
 
 ;;; RDROP ( -- ) drop top of return stack
 :_RDROP
-        DAT _RSPSTORE, 5, "RDROP"
+        DAT _RSPSTORE, 5, "RDROP", RDROP
 :RDROP
         ADD J, 1
 
@@ -651,7 +661,7 @@
 
 ;;; DSP@ ( -- x ) fetch top of parameter stack
 :_DSPFETCH
-        DAT _RDROP, 4, "DSP@"
+        DAT _RDROP, 4, "DSP@", DSPFETCH
 :DSPFETCH
         SET PUSH, SP
 
@@ -661,7 +671,7 @@
 
 ;;; DSP! ( x -- ) store top of parameter stack
 :_DSPSTORE
-        DAT _DSPFETCH, 4, "DSP!"
+        DAT _DSPFETCH, 4, "DSP!", DSPSTORE
 :DSPSTORE
         SET A, POP
         SET SP, A
@@ -679,7 +689,7 @@
 :DP_VAR
         DAT END                 ; free memory ptr
 :LATEST_VAR
-        DAT END                 ; dictionary ptr
+        DAT _PAREN_FIND         ; dictionary ptr
 :BASE_VAR
         DAT 10                  ; current radix for printing reading
 :S0_VAR
@@ -701,7 +711,7 @@
 
 ;;; STATE ( -- flag ) true if currently in compliation state
 :_STATE
-        DAT _DSPSTORE, 5, "STATE"
+        DAT _DSPSTORE, 5, "STATE", STATE
 :STATE
         SET PUSH, [STATE_VAR]
 
@@ -711,7 +721,7 @@
 
 ;;; DP ( -- addr ) points to next free word of memory, compiled words go here.
 :_DP
-        DAT _STATE, 2, "DP"
+        DAT _STATE, 2, "DP", DP
 :DP
         SET PUSH, [DP_VAR]
 
@@ -721,7 +731,7 @@
 
 ;;; LATEST ( -- addr ) dictionary ptr
 :_LATEST
-        DAT _DP, 6, "LATEST"
+        DAT _DP, 6, "LATEST", LATEST
 :LATEST
         SET PUSH, [LATEST_VAR]
 
@@ -731,7 +741,7 @@
 
 ;;; BASE ( -- radix ) current base for reading/printing
 :_BASE
-        DAT _LATEST, 4, "BASE"
+        DAT _LATEST, 4, "BASE", BASE
 :BASE
         SET PUSH, [BASE_VAR]
 
@@ -741,7 +751,7 @@
 
 ;;; S0 ( -- addr ) top of parameter stack
 :_S0
-        DAT _BASE, 2, "S0"
+        DAT _BASE, 2, "S0", S0
 :S0
         SET PUSH, [S0_VAR]
 
@@ -751,7 +761,7 @@
 
 ;;; R0 ( -- addr ) top of parameter stack
 :_R0
-        DAT _S0, 2, "R0"
+        DAT _S0, 2, "R0", R0_
 :R0_
         SET PUSH, [R0_VAR]
 
@@ -761,7 +771,7 @@
 
 ;;; VERSION ( -- version )
 :_VERSION
-        DAT _R0, 2, "VERSION"
+        DAT _R0, 2, "VERSION", VERSION
 :VERSION
         SET PUSH, [VERSION_VAR]
 
@@ -771,7 +781,7 @@
 
 ;;; F_IMMED ( -- mask )
 :_F_IMMED
-        DAT _VERSION, 7, "F_IMMED"
+        DAT _VERSION, 7, "F_IMMED", F_IMMED
 :F_IMMED
         SET PUSH, [F_IMMED_VAR]
 
@@ -781,7 +791,7 @@
 
 ;;; F_HIDDEN ( -- mask )
 :_F_HIDDEN
-        DAT _F_IMMED, 8, "F_HIDDEN"
+        DAT _F_IMMED, 8, "F_HIDDEN", F_HIDDEN
 :F_HIDDEN
         SET PUSH, [F_HIDDEN_VAR]
 
@@ -801,7 +811,7 @@
 
 ;;; KEY ( -- key ) currently reads from INPUT_STRING
 :_KEY
-        DAT _F_LENMASK, 3, "KEY"
+        DAT _F_LENMASK, 3, "KEY", KEY
 :KEY
         JSR KEY_FUNC
         SET PUSH, A
@@ -829,7 +839,7 @@
 
 ;;; EMIT ( key -- ) currently just dumps into SCREEN
 :_EMIT
-        DAT _KEY, 4, "EMIT"
+        DAT _KEY, 4, "EMIT", EMIT
 :EMIT
         SET A, POP
         BOR A, 0xF000           ; make it white
@@ -850,7 +860,7 @@
 ;;; WORD ( -- ptr len ) returns length and ptr to word string
 ;;; TODO: handle null at end of word instead of just space
 :_WORD
-        DAT _EMIT, 4, "WORD"
+        DAT _EMIT, 4, "WORD", WORD_
 :WORD_
         JSR WORD_FUNC
         SET PUSH, B
@@ -899,7 +909,7 @@
 ;;; NUMBER ( ptr len -- number unconverted-characters )
 ;;; reads from BASE_VAR
 :_NUMBER
-        DAT _WORD, 6, "NUMBER"
+        DAT _WORD, 6, "NUMBER", NUMBER
 :NUMBER
         SET A, POP              ; A <- len
         SET B, POP              ; B <- ptr
@@ -947,6 +957,33 @@
         SET A, 0
         SET B, 0
         SET PC, POP             ; return
+
+;;; (FIND) ( addr len -- dictionary-header-addr )  looks up word in dictionary
+;;; uses LATEST_VAR
+:_PAREN_FIND
+        DAT _NUMBER, 6, "(FIND)", PAREN_FIND
+:PAREN_FIND
+        SET A, POP              ; A <- len
+        SET B, POP              ; B <- addr
+        JSR FIND_FUNC
+        SET PUSH, A
+
+        SET A, [I]              ; next
+        ADD I, 1
+        SET PC, A
+
+;;; input: A len, B addr
+;;; output: dictionary header addr, or 0 if none found.
+:FIND_FUNC
+        SET X, [LATEST_VAR]
+        IFE X, 0                ; end of dictionary
+        SET PC, FIND_NOT_FOUND
+
+        IFE A, [X+1]
+
+:FIND_NOT_FOUND
+        SET A, 0
+        SET PC, POP             ; return 0
 
 :CRASH
         DAT 0xeee0              ; crash with illegal opcode

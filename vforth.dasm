@@ -13,6 +13,7 @@
 :test
         DAT WORD_
         DAT PAREN_FIND
+        DAT TOCFA
         DAT SHOW_STACK_IN_XYZ
         DAT CRASH
 
@@ -1015,6 +1016,160 @@
 :FIND_NOT_FOUND
         SET A, 0
         SET PC, POP             ; return 0
+
+
+;;; >CFA ( header-addr -- first-code-addr)  takes header and skips ptr, len & str.
+:_TOCFA
+        DAT _PAREN_FIND, 4, ">CFA", TOCFA
+:TOCFA
+        SET A, POP
+        JSR TOCFA_FUNC
+        SET PUSH, A
+
+        SET A, [I]              ; next
+        ADD I, 1
+        SET PC, A
+
+
+;;; input: A: header ptr
+;;; output: A: code addr ptr
+:TOCFA_FUNC
+        SET B, [A+1]            ; read len
+        AND B, 0x7fff           ; mask out flags
+        ADD A, 1
+        ADD A, B
+        SET PC, POP             ; return a + len + 1;
+
+;;; >DFA ( header-addr -- first-data-addr)  takes header and skips ptr, len, str
+;;;                                         and first word.
+:_TODFA
+        DAT _TOCFA, 4, ">DFA", TODFA
+:TODFA
+        DAT DOCOL, INCR, EXIT
+
+;;; HEADER ( addr len -- ) writes word header into free memory
+:_HEADER
+        DAT _TODFA, 6, "HEADER", HEADER
+:HEADER
+        SET A, POP                  ; A <- len
+        SET B, POP                  ; B <- addr
+        SET X, [DP_VAR]             ; X <- start of header
+        SET C, X                    ; C <- output ptr
+        SET [C], [LATEST_VAR]       ; write prev
+        ADD C, 1
+        SET [C], A                  ; write len
+        ADD C, 1
+:HEADER_WRITE_STR                   ; write string word by word
+        IFE A, 0
+        SET PC, HEADER_DONE
+        SET [C], [B]
+        ADD C, 1                    ; C++
+        ADD B, 1                    ; B++
+        SUB A, 1                    ; A--
+        SET PC, HEADER_WRITE_STR
+:HEADER_DONE
+        SET [LATEST_VAR], X         ; LATEST_VAR points to the header
+        SET [DP_VAR], C             ; DP_VAR points past end of header
+
+        SET A, [I]              ; next
+        ADD I, 1
+        SET PC, A
+
+;;; , ( word -- ) stores word at DP then adds 1 to DP
+:_COMMA
+        DAT _HEADER, 1, ",", COMMA
+:COMMA
+        SET A, POP
+        JSR COMMA_FUNC
+
+        SET A, [I]              ; next
+        ADD I, 1
+        SET PC, A
+
+:COMMA_FUNC
+        SET X, [DP_VAR]
+        SET [X], A
+        ADD X, 1
+        SET [DP_VAR], X
+        SET PC, PUSH
+
+;;; [ ( -- ) switch to immediate mode
+;;; F_IMMEDATE
+:_LBRAC
+        DAT _COMMA, 0xf001, "[", LBRAC
+:LBRAC
+        SET [STATE_VAR], 0
+
+        SET A, [I]              ; next
+        ADD I, 1
+        SET PC, A
+
+;;; ] ( -- ) switch to compile mode
+:_RBRAC
+        DAT _LBRAC, 1, "]", RBRAC
+:RBRAC
+        SET [STATE_VAR], 0xffff
+
+        SET A, [I]              ; next
+        ADD I, 1
+        SET PC, A
+
+;;; : ( -- ) defines word!
+:_COLON
+        DAT _RBRAC, 1, ":", COLON
+:COLON
+        DAT DOCOL, WORD_, HEADER
+        DAT LIT, DOCOL, COMMA
+        DAT LATEST, FETCH, HIDDEN
+        DAT RBRAC, EXIT
+
+;;; ; ( -- ) end of word
+:_SEMICOLON
+        DAT _COLON, 0xf001, ";", SEMICOLON
+:SEMICOLON
+        DAT LIT, EXIT, COMMA
+
+;;; IMMEDIATE ( -- ) toggles the F_IMMEDIATE flag on the most recently defined
+;;;   word, or the current word, when in the middle of a definition
+:_IMMEDIATE
+        DAT _SEMICOLON, 0xf009, IMMEDIATE
+:IMMEDIATE
+        MOV A, [LATEST_VAR]
+        MOV A, 1
+        MOV B, [A]
+        XOR B, [F_IMMED_VAR]
+        MOV [A], B
+
+        SET A, [I]              ; next
+        ADD I, 1
+        SET PC, A
+
+
+;;; HIDDEN ( header-addr -- ) toggle hidden flag on given header
+:_HIDDEN
+        DAT _IMMEDIATE, 6, "HIDDEN", HIDDEN
+:HIDDEN
+        SET A, POP
+        ADD A, 1                ; point to len
+        SET B, [A]              ; load len into B
+        XOR B, [F_HIDDEN_VAR]
+        SET [A], B              ; store len back
+
+        SET A, [I]              ; next
+        ADD I, 1
+        SET PC, A
+
+;;; ['] ( -- addr ) return code word of next word.
+:_BRACET_TICK
+        DAT _HIDDEN, 3, "[']", BRACKET_TICK
+:BRACET_TICK
+        SET A, [I]
+        ADD I, 1
+        SET PUSH, A
+
+        SET A, [I]              ; next
+        ADD I, 1
+        SET PC, A
 
 :CRASH
         DAT 0xeee0              ; crash with illegal opcode

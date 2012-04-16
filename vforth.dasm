@@ -1159,6 +1159,8 @@
         ADD I, 1
         SET PC, A
 
+;;; HIDE TODO:
+
 ;;; ['] ( -- addr ) return code word of next word.
 :_BRACET_TICK
         DAT _HIDDEN, 3, "[']", BRACKET_TICK

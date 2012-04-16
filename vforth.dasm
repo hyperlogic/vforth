@@ -1162,9 +1162,9 @@
 ;;; HIDE TODO:
 
 ;;; ['] ( -- addr ) return code word of next word.
-:_BRACET_TICK
+:_BRAKCET_TICK
         DAT _HIDDEN, 3, "[']", BRACKET_TICK
-:BRACET_TICK
+:BRACKET_TICK
         SET A, [I]
         ADD I, 1
         SET PUSH, A

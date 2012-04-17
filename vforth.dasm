@@ -1,21 +1,35 @@
 :START
-        SET I, test             ; initialize next word ptr
         SET J, [R0_VAR]         ; initialize return stack
         SET SP, [S0_VAR]        ; initialize parameter stack
 
-        SET A, [I]              ; next
-        ADD I, 1
-        SET PC, A
+        ; jump directly into the interpreter
+        SUB J, 1
+        SET [J], QUIT
+        SET A, QUIT
+        SET PC, DOCOL
 
-;;; test is a test of the forth threaded-code model.
-;;; It simply contains address of 'primitive' words.
-;;; A primitive word has some instructions then a NEXT macro.
-:test
-        DAT WORD_
+;;; branch test
+:BRANCH_TEST
+        DAT DOCOL
+        ;; look up 15
+        DAT LITSTRING, 2, "15"
         DAT PAREN_FIND
-        DAT TOCFA
+        DAT ZBRANCH, 11
+        DAT LITSTRING, 4, "TRUE"
+        DAT TELL
+        DAT EXIT
+        DAT BRANCH, 9
+        DAT LITSTRING, 5, "FALSE"
+        DAT TELL
+        DAT EXIT
+
+;;; test interpret of single word
+:TEST
+        DAT DOCOL
+        DAT R0_, RSPSTORE       ; clear return stack
+        DAT INTERPRET           ; interpret the next word
         DAT SHOW_STACK_IN_XYZ
-        DAT CRASH
+        DAT EXIT
 
 ;;; For debugging display top 3 items on parameter stack in registers X Y Z.
 ;;; Z is top of stack.
@@ -28,37 +42,12 @@
         ADD I, 1
         SET PC, A
 
-;;; EMIT_WORD ( addr, len -- ) For debugging display thing returned by WORD on screen 
-:EMIT_WORD
-        SET A, POP              ; A <- len
-        SET B, POP              ; B <- addr
-        SET C, 0                ; C is loop counter
-:EMIT_WORD_EACH_CHAR
-        IFE C, A
-        SET PC, EMIT_END_LOOP
-        SET X, 0x8000
-        ADD X, C                ; X <- output ptr
-        SET Y, B                ; Y <- input ptr
-        ADD Y, C
-        SET Z, [Y]
-        BOR Z, 0xf000
-        SET [X], Z
-        ADD C, 1
-        SET PC, EMIT_WORD_EACH_CHAR
-:EMIT_END_LOOP
-        SET A, [I]              ; next
-        ADD I, 1
-        SET PC, A
-
-;;; used interpret compiled words
-:DOCOL
-        SUB J, 1                ; push I onto return stack
-        SET [J], I
-        ADD A, 1                ; A points to codeword, so make
-        SET I, A                ; I point to first data word
-        SET A, [I]              ; next
-        ADD I, 1
-        SET PC, A
+:SHOW_STACK_IN_XYZ_FUNC
+        SET A, SP
+        SET X, [A+2]
+        SET Y, [A+1]
+        SET Z, [A]
+        SET PC, POP
 
 ;;;
 ;;; Primitive words
@@ -686,34 +675,11 @@
 
 ;;;
 ;;; variables/constants
-;;;
-
-:STATE_VAR
-        DAT 0                   ; 0xffff if in compile mode
-:DP_VAR
-        DAT END                 ; free memory ptr
-:LATEST_VAR
-        DAT _PAREN_FIND         ; dictionary ptr
-:BASE_VAR
-        DAT 10                  ; current radix for printing reading
-:S0_VAR
-        DAT 0xffff              ; top of parameter stack
-:R0_VAR
-        DAT 0x1000              ; top of return stack
-:VERSION_VAR
-        DAT 1                   ; current vforth version!
-:F_IMMED_VAR
-        DAT 0x8000
-:F_HIDDEN_VAR
-        DAT 0x4000
-:F_LENMASK_VAR
-        DAT 0x3fff
-
-;;;
-;;; variable access words
-;;;
+;;; TODO: these can be macros someday, or inline words?
 
 ;;; STATE ( -- flag ) true if currently in compliation state
+:STATE_VAR
+        DAT 0                   ; 0xffff if in compile mode
 :_STATE
         DAT _DSPSTORE, 5, "STATE", STATE
 :STATE
@@ -724,6 +690,8 @@
         SET PC, A
 
 ;;; DP ( -- addr ) points to next free word of memory, compiled words go here.
+:DP_VAR
+        DAT END                 ; free memory ptr
 :_DP
         DAT _STATE, 2, "DP", DP
 :DP
@@ -734,6 +702,8 @@
         SET PC, A
 
 ;;; LATEST ( -- addr ) dictionary ptr
+:LATEST_VAR
+        DAT _INTERPRET         ; dictionary ptr TODO: update to last word
 :_LATEST
         DAT _DP, 6, "LATEST", LATEST
 :LATEST
@@ -744,6 +714,8 @@
         SET PC, A
 
 ;;; BASE ( -- radix ) current base for reading/printing
+:BASE_VAR
+        DAT 10                  ; current radix for printing reading
 :_BASE
         DAT _LATEST, 4, "BASE", BASE
 :BASE
@@ -754,6 +726,8 @@
         SET PC, A
 
 ;;; S0 ( -- addr ) top of parameter stack
+:S0_VAR
+        DAT 0xffff              ; top of parameter stack
 :_S0
         DAT _BASE, 2, "S0", S0
 :S0
@@ -764,6 +738,8 @@
         SET PC, A
 
 ;;; R0 ( -- addr ) top of parameter stack
+:R0_VAR
+        DAT 0x1000              ; top of return stack
 :_R0
         DAT _S0, 2, "R0", R0_
 :R0_
@@ -774,6 +750,8 @@
         SET PC, A
 
 ;;; VERSION ( -- version )
+:VERSION_VAR
+        DAT 1                   ; current vforth version!
 :_VERSION
         DAT _R0, 2, "VERSION", VERSION
 :VERSION
@@ -784,6 +762,8 @@
         SET PC, A
 
 ;;; F_IMMED ( -- mask )
+:F_IMMED_VAR
+        DAT 0x8000
 :_F_IMMED
         DAT _VERSION, 7, "F_IMMED", F_IMMED
 :F_IMMED
@@ -794,6 +774,8 @@
         SET PC, A
 
 ;;; F_HIDDEN ( -- mask )
+:F_HIDDEN_VAR
+        DAT 0x4000
 :_F_HIDDEN
         DAT _F_IMMED, 8, "F_HIDDEN", F_HIDDEN
 :F_HIDDEN
@@ -804,6 +786,8 @@
         SET PC, A
 
 ;;; F_LENMASK
+:F_LENMASK_VAR
+        DAT 0x3fff
 :_F_LENMASK
         DAT _F_HIDDEN, 9, "F_LENMASK"
 :F_LENMASK
@@ -813,9 +797,54 @@
         ADD I, 1
         SET PC, A
 
+
+;;; DOCOL ( -- addr-of-docol-code )
+:DOCOL_VAR
+        DAT DOCOL
+:_DOCOL
+        DAT _F_LENMASK, 5, "DOCOL", DOCOL_
+:DOCOL_
+        SET PUSH, [DOCOL_VAR]
+
+        SET A, [I]              ; next
+        ADD I, 1
+        SET PC, A
+
+;;; used to interpret compiled words
+:DOCOL
+        SUB J, 1                ; push I onto return stack
+        SET [J], I
+        ADD A, 1                ; A points to codeword, so make
+        SET I, A                ; I point to first data word
+        SET A, [I]              ; next
+        ADD I, 1
+        SET PC, A
+
+;;; DODOES ( -- addr-of-dodoes-code )
+:DODOES_VAR
+        DAT DODOES
+:_DODOES
+        DAT _DOCOL, 6, "DODOES", DODOES_
+:DODOES_
+        SET PUSH, [DODOES_VAR]
+
+        SET A, [I]              ; next
+        ADD I, 1
+        SET PC, A
+
+;;; used interpret variables
+:DODOES
+        SET A, I
+        ADD A, 1                ; A <- data addr
+        ADD I, [I]              ; set I to point to first behavior word
+        SET PUSH, A             ; push data-addr
+        SET A, [I]              ; next
+        ADD I, 1
+        SET PC, A
+
 ;;; KEY ( -- key ) currently reads from INPUT_BUFFER
 :_KEY
-        DAT _F_LENMASK, 3, "KEY", KEY
+        DAT _DODOES, 3, "KEY", KEY
 :KEY
         JSR KEY_FUNC
         SET PUSH, A
@@ -838,8 +867,6 @@
 ;;; KEY variables
 :CUR_KEY
         DAT INPUT_BUFFER
-:INPUT_BUFFER
-        DAT "NUMBER", 0x20, 0
 
 ;;; EMIT ( key -- ) currently just dumps into SCREEN
 :_EMIT
@@ -985,7 +1012,7 @@
         SET PC, FIND_NOT_FOUND
 
         SET C, [X+1]            ; B <- len
-        AND C, 0xefff           ; mask out immediate flag, but include hidden flag
+        AND C, 0x7fff           ; mask out F_IMMED flag, but include F_HIDDEN flag
         IFN A, C                ; compare lengths, This will exclude hidden words.
         SET PC, FIND_NEXT_WORD
 
@@ -1045,7 +1072,8 @@
 :_TODFA
         DAT _TOCFA, 4, ">DFA", TODFA
 :TODFA
-        DAT DOCOL, INCR, EXIT
+        DAT DOCOL
+        DAT INCR, EXIT
 
 ;;; HEADER ( addr len -- ) writes word header into free memory
 :_HEADER
@@ -1118,7 +1146,8 @@
 :_COLON
         DAT _RBRAC, 1, ":", COLON
 :COLON
-        DAT DOCOL, WORD_, HEADER
+        DAT DOCOL
+        DAT WORD_, HEADER
         DAT LIT, DOCOL, COMMA
         DAT LATEST, FETCH, HIDDEN
         DAT RBRAC, EXIT
@@ -1127,23 +1156,25 @@
 :_SEMICOLON
         DAT _COLON, 0xf001, ";", SEMICOLON
 :SEMICOLON
+        DAT DOCOL
         DAT LIT, EXIT, COMMA
+        DAT LATEST, FETCH, HIDDEN
+        DAT LBRAC, EXIT
 
 ;;; IMMEDIATE ( -- ) toggles the F_IMMEDIATE flag on the most recently defined
 ;;;   word, or the current word, when in the middle of a definition
 :_IMMEDIATE
         DAT _SEMICOLON, 0xf009, IMMEDIATE
 :IMMEDIATE
-        MOV A, [LATEST_VAR]
-        MOV A, 1
-        MOV B, [A]
+        SET A, [LATEST_VAR]
+        SET A, 1
+        SET B, [A]
         XOR B, [F_IMMED_VAR]
-        MOV [A], B
+        SET [A], B
 
         SET A, [I]              ; next
         ADD I, 1
         SET PC, A
-
 
 ;;; HIDDEN ( header-addr -- ) toggle hidden flag on given header
 :_HIDDEN
@@ -1159,10 +1190,15 @@
         ADD I, 1
         SET PC, A
 
-;;; HIDE TODO:
+;;; HIDE ( -- ) hide the next read word
+:_HIDE
+        DAT _HIDDEN, 4, "HIDE", HIDE
+:HIDE
+        DAT DOCOL
+        DAT WORD_, PAREN_FIND, HIDDEN, EXIT
 
-;;; ['] ( -- addr ) return code word of next word.
-:_BRAKCET_TICK
+;;; ['] ( -- addr ) return code word of next word, pointed to by I
+:_BRACKET_TICK
         DAT _HIDDEN, 3, "[']", BRACKET_TICK
 :BRACKET_TICK
         SET A, [I]
@@ -1173,7 +1209,149 @@
         ADD I, 1
         SET PC, A
 
+;;; BRANCH ( -- ) add offset of next word (pointed to by I), and add it to I
+;;; NOTE: offset is signed!
+:_BRANCH
+        DAT _BRACKET_TICK, 7, "BRANCH", BRANCH
+:BRANCH
+        SET A, [I]
+        AND A, 0xf000           ; mask off high order bit
+        IFE A, 0xf000           ; is negitive offset
+        SET PC, BRANCH_NEG
+        ADD I, [I]
+        SET PC, BRANCH_NEXT
+:BRANCH_NEG
+        SET A, [I]
+        XOR A, 0xffff           ; bit-wise not
+        ADD A, 1                ; convert from neg into positive
+        SUB I, A
+:BRANCH_NEXT
+        SET A, [I]              ; next
+        ADD I, 1
+        SET PC, A
+
+;;; 0BRANCH ( n -- ) if n is zero BRANCH using next word as offset.
+:_ZBRANCH
+        DAT _BRANCH, 7, "0BRANCH", ZBRANCH
+:ZBRANCH
+        SET A, POP
+        IFE A, 0
+        SET PC, BRANCH          ; reuse branch code
+        ADD I, 1                ; skip branch offset
+
+        SET A, [I]              ; next
+        ADD I, 1
+        SET PC, A
+
+;;; LITSTRING ( -- addr len ) reads embedded word string from word stream
+;;;   (pointed to by I) and pushes its addr and len onto stack
+:_LITSTRING
+        DAT _ZBRANCH, 9, "LITSTRING", LITSTRING
+:LITSTRING
+        SET A, [I]              ; A <- len
+        ADD I, 1
+        SET B, I                ; B <- str addr
+        ADD I, A                ; Move I to end of string
+        SET PUSH, B
+        SET PUSH, A
+
+        SET A, [I]              ; next
+        ADD I, 1
+        SET PC, A
+
+;;; TELL ( addr len -- ) prints string to screen
+;;;  TODO USE EMIT:
+:_TELL
+        DAT _LITSTRING, 4, "TELL", TELL
+:TELL
+        SET A, POP              ; A <- len
+        SET B, POP              ; B <- addr
+        SET C, 0                ; C is loop counter
+:TELL_EACH_CHAR
+        IFE C, A
+        SET PC, TELL_END_LOOP
+        SET X, 0x8000
+        ADD X, C                ; X <- output ptr
+        SET Y, B                ; Y <- input ptr
+        ADD Y, C
+        SET Z, [Y]
+        BOR Z, 0xf000
+        SET [X], Z
+        ADD C, 1
+        SET PC, TELL_EACH_CHAR
+:TELL_END_LOOP
+        SET A, [I]              ; next
+        ADD I, 1
+        SET PC, A
+
+;;; QUIT ( -- )
+:_QUIT
+        DAT _TELL, 4, "QUIT", QUIT
+:QUIT
+        DAT DOCOL
+        DAT R0_, RSPSTORE       ; clear return stack
+        DAT INTERPRET           ; interpret the next word
+        DAT BRANCH, 0xfffe      ; loop (indefinitely) 0xfffe is -2
+
+;;; INTERPRET ( -- )
+:INTERPRET_STR_LEN_VAR
+        DAT 0
+:INTERPRET_STR
+        DAT 0
+:_INTERPRET
+        DAT _QUIT, 9, "INTERPRET", INTERPRET
+:INTERPRET
+        JSR WORD_FUNC           ; returns len in A, ptr in B
+        SET [INTERPRET_STR_LEN_VAR], A
+        SET [INTERPRET_STR], B
+        JSR FIND_FUNC           ; returns dictionary header addr or 0 if none found
+        IFE 0, A                ; if not in dictionary
+        SET PC, INTERPRET_NOT_FOUND
+;;; found
+        SET B, [A+1]
+        AND B, 0x8000           ; B <- len & 0x8000
+        SET Z, A                ; Z <- dictionary word
+        JSR TOCFA_FUNC          ; returns code field addr in A
+        IFN B, 0
+        SET PC, INTERPRET_FOUND_IMMEDIATE
+;;; found not immediate
+        IFE [STATE_VAR], 0
+;;; found not immedate executing
+        SET PC, A               ; execute it
+;;; found not imeediate compiling
+        JSR COMMA_FUNC          ; write cfa to dp
+        SET PC, INTERPRET_NEXT
+:INTERPRET_FOUND_IMMEDIATE
+        SET PC, A               ; execute it
+:INTERPRET_NOT_FOUND
+        SET A, [INTERPRET_STR_LEN_VAR]
+        SET B, [INTERPRET_STR]
+        JSR NUMBER_FUNC         ; output A is num unconverted chars, B is result
+        IFN A, 0
+        SET PC, INTERPRET_ERROR
+;;; literal
+        IFN [STATE_VAR], 0
+        SET PC, INTERPRET_LITERAL_COMPILE
+;;; literal execute
+        SET PUSH, B             ; push number result on stack
+        SET PC, INTERPRET_NEXT
+:INTERPRET_LITERAL_COMPILE
+        SET A, LIT
+        JSR COMMA_FUNC          ; write LIT code word to dp
+        SET A, B
+        JSR COMMA_FUNC          ; write number to dp as well
+:INTERPRET_NEXT
+        SET A, [I]              ; next
+        ADD I, 1
+        SET PC, A
+:INTERPRET_ERROR
+        SET PC, CRASH           ; TODO: print error!
+
 :CRASH
         DAT 0xeee0              ; crash with illegal opcode
+
+;;; print ABC
+:INPUT_BUFFER
+        DAT "65 0 + EMIT 65 1 + EMIT 65 2 + EMIT", 0x20, 0
 
 :END

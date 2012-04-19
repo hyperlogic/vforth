@@ -842,7 +842,7 @@
         ADD I, 1
         SET PC, A
 
-;;; KEY ( -- key ) currently reads from INPUT_BUFFER
+;;; KEY ( -- key ) currently reads from LINE_BUFFER
 :_KEY
         DAT _DODOES, 3, "KEY", KEY
 :KEY
@@ -858,7 +858,10 @@
         SET A, [CUR_KEY]
         IFN [A], 0
         SET PC, KEY_VALID
-        SET PC, CRASH           ; crash on end of input
+        JSR START_PROMPT           ; read more input
+        SET [CUR_KEY], LINE_BUFFER
+        SET [CURSOR], 0x8000       ; reset emit cursor
+        SET PC, KEY_FUNC
 :KEY_VALID
         ADD [CUR_KEY], 1
         SET A, [A]
@@ -866,7 +869,7 @@
 
 ;;; KEY variables
 :CUR_KEY
-        DAT INPUT_BUFFER
+        DAT LINE_BUFFER
 
 ;;; EMIT ( key -- ) currently just dumps into SCREEN
 :_EMIT
@@ -1351,7 +1354,92 @@
         DAT 0xeee0              ; crash with illegal opcode
 
 ;;; print ABC
-:INPUT_BUFFER
+;;:INPUT_BUFFER
+;;        DAT "65 0 + EMIT 65 1 + EMIT 65 2 + EMIT", 0x20, 0
+
+;;; 64 char line input buffer
+:LINE_BUFFER
         DAT "65 0 + EMIT 65 1 + EMIT 65 2 + EMIT", 0x20, 0
+        DAT "0123456789abcdef0123456789abcdef"
+        DAT "0123456789abcdef0123456789abcdef"
+        DAT "0123456789abcdef0123456789abcdef"
+        DAT "0123456789abcdef0123456789abcdef"
+:LINE_PTR
+        DAT LINE_BUFFER
+
+;; simple input
+:KBD_PTR
+        DAT 0x9000
+:SCR_PTR
+        DAT 0x8140         ; second to last line
+
+:START_PROMPT
+        SET [LINE_PTR], LINE_BUFFER ; reset line buffer
+        SET A, [SCR_PTR]
+        SET [A], 0x803e   ; gray '>'
+        ADD A, 1
+        SET [A], 0x0020   ; space
+        ADD A, 1
+        SET [SCR_PTR], A
+:INPUT_LOOP
+        SET A, [KBD_PTR]   ; A <- char*
+        IFN [A], 0
+        SET PC, READ_CHAR
+:NEXT_CHAR
+        ADD [KBD_PTR], 1
+        IFE [KBD_PTR], 0x9010
+        SET [KBD_PTR], 0x9000
+        SET PC, INPUT_LOOP
+:READ_CHAR
+        SET B, [A]          ; B <- *A
+        SET [A], 0          ; clear kbd buffer, i.e. consume the key
+        IFE B, 0x0008       ; if back-space
+        SET PC, BACKSPACE
+        IFE B, 0x000a       ; if new-line
+        SET PC, NEW_LINE
+
+;; write to line
+        SET C, [LINE_PTR]
+        SET [C], B         ; copy char into line
+        ADD [LINE_PTR], 1  ; line_ptr++
+
+;; write to screen
+        BOR B, 0xF000      ; add color
+        SET C, [SCR_PTR]
+        SET [C], B         ; copy colored char into screen
+        ADD [SCR_PTR], 1   ; scr_ptr++
+
+        SET PC, NEXT_CHAR
+
+:BACKSPACE
+;; clear line char
+        SUB [LINE_PTR], 1  ; line_ptr--
+        SET C, [LINE_PTR]
+        SET [C], 0         ; clear current char in lin
+
+;; clear screen char
+        SUB [SCR_PTR], 1   ; scr_ptr--
+        SET C, [SCR_PTR]
+        SET [C], 0         ; clear current char in lin
+
+        SET PC, NEXT_CHAR
+
+:NEW_LINE
+        SET A, [SCR_PTR]
+;; write a new-line and a zero into line
+        SET B, [LINE_PTR]
+        SET [B], 0x0020
+        ADD B, 1
+        SET [B], 0
+        ADD B, 1
+
+:CLR_LINE_LOOP
+        SET [A], 0
+        SUB A, 1
+        IFN A, 0x7fff
+        SET PC, CLR_LINE_LOOP
+        SET [SCR_PTR], 0x8140
+
+        SET PC, POP
 
 :END

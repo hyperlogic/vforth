@@ -64,7 +64,7 @@
 ;;;     word immediate:1;  // msb immediate flag
 ;;;     word hidden:1;     // hidden flag
 ;;;     word len:14;
-;;;     word len[0];  // len words
+;;;     word string[0];  // size of string is len (exclude immediate and hidden bits)
 ;;; };
 ;;;
 ;;; The first word after the header is the address of the code implmenting the
@@ -548,7 +548,7 @@
         ADD I, 1
         SET PC, A
 
-;;; LIT ( -- )
+;;; LIT ( -- lit )  ; pushes next word in instruction stream on stack, then skip it.
 :_LIT
         DAT _EXIT, 3, "LIT", LIT
 :LIT
@@ -1094,9 +1094,8 @@
 ;;; >DFA ( header-addr -- first-data-addr)  takes header and skips ptr, len, str
 ;;;                                         and first word.
 :_TODFA
-        DAT _TOCFA, 4, ">DFA", TODFA
+        DAT _TOCFA, 4, ">DFA", DOCOL
 :TODFA
-        DAT DOCOL
         DAT INCR, EXIT
 
 ;;; HEADER ( addr len -- ) writes word header into free memory
@@ -1168,9 +1167,8 @@
 
 ;;; : ( -- ) defines word!
 :_COLON
-        DAT _RBRAC, 1, ":", COLON
+        DAT _RBRAC, 1, ":", DOCOL
 :COLON
-        DAT DOCOL
         DAT WORD_, HEADER
         DAT LIT, DOCOL, COMMA
         DAT LATEST, FETCH, HIDDEN
@@ -1178,9 +1176,8 @@
 
 ;;; ; ( -- ) end of word
 :_SEMICOLON
-        DAT _COLON, 0xf001, ";", SEMICOLON
+        DAT _COLON, 0xf001, ";", DOCOL
 :SEMICOLON
-        DAT DOCOL
         DAT LIT, EXIT, COMMA
         DAT LATEST, FETCH, HIDDEN
         DAT LBRAC, EXIT
@@ -1216,9 +1213,8 @@
 
 ;;; HIDE ( -- ) hide the next read word
 :_HIDE
-        DAT _HIDDEN, 4, "HIDE", HIDE
+        DAT _HIDDEN, 4, "HIDE", DOCOL
 :HIDE
-        DAT DOCOL
         DAT WORD_, PAREN_FIND, HIDDEN, EXIT
 
 ;;; ['] ( -- addr ) return code word of next word, pointed to by I
@@ -1310,9 +1306,8 @@
 
 ;;; QUIT ( -- )
 :_QUIT
-        DAT _TELL, 4, "QUIT", QUIT
+        DAT _TELL, 4, "QUIT", DOCOL
 :QUIT
-        DAT DOCOL
         DAT R0_, RSPSTORE       ; clear return stack
         DAT INTERPRET           ; interpret the next word
         DAT BRANCH, 0xfffe      ; loop (indefinitely) 0xfffe is -2
@@ -1325,7 +1320,8 @@
 :_INTERPRET
         DAT _QUIT, 9, "INTERPRET", INTERPRET
 :INTERPRET
-        SET [ERRNO], 0xF057 ; W
+        ;;; AJT: REMOVE
+        SET [ERRNO], 0xF057 ; 'W' for word
         JSR PRINT_ERROR_FUNC
 
         JSR WORD_FUNC           ; returns len in A, ptr in B
@@ -1336,7 +1332,8 @@
         SET PC, INTERPRET_NOT_FOUND
 ;;; found
 
-        SET [ERRNO], 0xF046 ; F for found
+        ;;; AJT: REMOVE
+        SET [ERRNO], 0xF046 ; 'F' for found
         JSR PRINT_ERROR_FUNC
 
         SET B, [A+1]
@@ -1352,7 +1349,9 @@
 
 ;;; found not immedate executing
 :INTERPRET_EXECUTE
-        SET [ERRNO], 0xF058 ; X for execute
+
+        ;;; AJT: REMOVE
+        SET [ERRNO], 0xF058 ; 'X' for execute
         JSR PRINT_ERROR_FUNC
 
         SET PC, [A]               ; execute it
@@ -1361,13 +1360,14 @@
         SET PC, INTERPRET_NEXT
 :INTERPRET_FOUND_IMMEDIATE
 
-        SET [ERRNO], 0xF049 ; I for immediate
+        ;;; AJT: REMOVE
+        SET [ERRNO], 0xF049 ; 'I' for immediate
         JSR PRINT_ERROR_FUNC
 
         SET PC, [A]             ; execute it
 :INTERPRET_NOT_FOUND
 
-        SET [ERRNO], 0xF04e ; N for not-found
+        SET [ERRNO], 0xF04e ; 'N' for not-found
         JSR PRINT_ERROR_FUNC
 
         SET A, [INTERPRET_STR_LEN_VAR]
@@ -1392,12 +1392,14 @@
         SET PC, A
 :INTERPRET_ERROR
 ; TODO print meaningful error
-        SET [ERRNO], 0xF045 ; white E
+        ;;; AJT: REMOVE
+        SET [ERRNO], 0xF045 ; 'E' for error
         JSR PRINT_ERROR_FUNC
         SET PC, CRASH
 
 :CRASH
-        SET [ERRNO], 0xF043 ; white C
+        ;;; AJT: REMOVE
+        SET [ERRNO], 0xF043 ; 'C' for crash
         JSR PRINT_ERROR_FUNC
         DAT 0xeee0              ; crash with illegal opcode
 
@@ -1407,9 +1409,8 @@
 
 ;;; 64 char line input buffer
 :LINE_BUFFER
-;; DAT ": DOUBLE 2 * ;", 0x20, 0
+DAT ": EMIT2 EMIT ; 66 EMIT2", 0x20, 0
 ;;DAT 0x3a, 0x20, 0x44, 0x4f, 0x55, 0x42, 0x4c, 0x45, 0x20, 0x32, 0x20, 0x2a, 0x20, 0x3b, 0x20, 0
-DAT "65 EMIT", 0x20, 0
         DAT "0123456789abcdef0123456789abcdef"
         DAT "0123456789abcdef0123456789abcdef"
         DAT "0123456789abcdef0123456789abcdef"

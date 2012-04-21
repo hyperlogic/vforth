@@ -1,21 +1,12 @@
 :START
-        SET J, [R0_VAR]         ; initialize return stack
-        SET SP, [S0_VAR]        ; initialize parameter stack
+        SET J, [R0_VAR]
+        SET I, [COLD_START]
+        SET A, [I]              ; next
+        ADD I, 1
+        SET PC, A
 
-        ; jump directly into the first word
-        SUB J, 1
-        SET [J], [FIRST_WORD]
-        SET A, [FIRST_WORD]
-        SET PC, DOCOL
-
-:FIRST_WORD
-;        DAT EMIT_TEST
+:COLD_START
         DAT QUIT
-
-:EMIT_TEST
-        DAT DOCOL
-        DAT LIT, 0x42, EMIT
-        DAT EXIT
 
 ;;; branch test
 :BRANCH_TEST
@@ -1146,7 +1137,7 @@
         SET [X], A
         ADD X, 1
         SET [DP_VAR], X
-        SET PC, PUSH
+        SET PC, POP
 
 ;;; [ ( -- ) switch to immediate mode
 ;;; F_IMMEDATE
@@ -1331,7 +1322,9 @@
         JSR WORD_FUNC           ; returns len in A, ptr in B
         SET [INTERPRET_STR_LEN_VAR], A
         SET [INTERPRET_STR], B
+
         JSR FIND_FUNC           ; returns dictionary header addr or 0 if none found
+
         IFE 0, A                ; if not in dictionary
         SET PC, INTERPRET_NOT_FOUND
 ;;; found
@@ -1351,6 +1344,14 @@
         IFE [STATE_VAR], 0
         SET PC, INTERPRET_EXECUTE
 
+        ;;; AJT: REMOVE
+        SET [ERRNO], 0xF058 ; 'C' for compile
+        JSR PRINT_ERROR_FUNC
+
+;;; found not immediate compiling
+        JSR COMMA_FUNC          ; write cfa to dp
+        SET PC, INTERPRET_NEXT
+
 ;;; found not immedate executing
 :INTERPRET_EXECUTE
 
@@ -1359,9 +1360,7 @@
         JSR PRINT_ERROR_FUNC
 
         SET PC, [A]               ; execute it
-;;; found not immediate compiling
-        JSR COMMA_FUNC          ; write cfa to dp
-        SET PC, INTERPRET_NEXT
+
 :INTERPRET_FOUND_IMMEDIATE
 
         ;;; AJT: REMOVE
@@ -1403,7 +1402,7 @@
 
 :CRASH
         ;;; AJT: REMOVE
-        SET [ERRNO], 0xF043 ; 'C' for crash
+        SET [ERRNO], 0xF048 ; 'H' for halt!
         JSR PRINT_ERROR_FUNC
         DAT 0xeee0              ; crash with illegal opcode
 
@@ -1413,7 +1412,7 @@
 
 ;;; 64 char line input buffer
 :LINE_BUFFER
-DAT ": EMIT2 EMIT ; 66 EMIT2", 0x20, 0
+DAT ": XXX EMIT ; 66 XXX", 0x20, 0
 ;;DAT 0x3a, 0x20, 0x44, 0x4f, 0x55, 0x42, 0x4c, 0x45, 0x20, 0x32, 0x20, 0x2a, 0x20, 0x3b, 0x20, 0
         DAT "0123456789abcdef0123456789abcdef"
         DAT "0123456789abcdef0123456789abcdef"

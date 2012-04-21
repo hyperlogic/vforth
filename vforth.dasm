@@ -764,7 +764,7 @@
 :_VERSION
         DAT _R0, 2, "VERSION", VERSION
 :VERSION
-        SET PUSH, [VERSION_VAR]
+        SET PUSH, VERSION_VAR
 
         SET A, [I]              ; next
         ADD I, 1
@@ -776,7 +776,7 @@
 :_F_IMMED
         DAT _VERSION, 7, "F_IMMED", F_IMMED
 :F_IMMED
-        SET PUSH, [F_IMMED_VAR]
+        SET PUSH, F_IMMED_VAR
 
         SET A, [I]              ; next
         ADD I, 1
@@ -788,7 +788,7 @@
 :_F_HIDDEN
         DAT _F_IMMED, 8, "F_HIDDEN", F_HIDDEN
 :F_HIDDEN
-        SET PUSH, [F_HIDDEN_VAR]
+        SET PUSH, F_HIDDEN_VAR
 
         SET A, [I]              ; next
         ADD I, 1
@@ -800,7 +800,7 @@
 :_F_LENMASK
         DAT _F_HIDDEN, 9, "F_LENMASK"
 :F_LENMASK
-        SET PUSH, [F_LENMASK_VAR]
+        SET PUSH, F_LENMASK_VAR
 
         SET A, [I]              ; next
         ADD I, 1
@@ -813,7 +813,7 @@
 :_DOCOL
         DAT _F_LENMASK, 5, "DOCOL", DOCOL_
 :DOCOL_
-        SET PUSH, [DOCOL_VAR]
+        SET PUSH, DOCOL_VAR
 
         SET A, [I]              ; next
         ADD I, 1
@@ -835,7 +835,7 @@
 :_DODOES
         DAT _DOCOL, 6, "DODOES", DODOES_
 :DODOES_
-        SET PUSH, [DODOES_VAR]
+        SET PUSH, DODOES_VAR
 
         SET A, [I]              ; next
         ADD I, 1

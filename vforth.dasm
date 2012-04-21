@@ -1407,7 +1407,9 @@
 
 ;;; 64 char line input buffer
 :LINE_BUFFER
-        DAT ": DOUBLE 2 * ;", 0x20, 0
+;; DAT ": DOUBLE 2 * ;", 0x20, 0
+;;DAT 0x3a, 0x20, 0x44, 0x4f, 0x55, 0x42, 0x4c, 0x45, 0x20, 0x32, 0x20, 0x2a, 0x20, 0x3b, 0x20, 0
+DAT "65 EMIT", 0x20, 0
         DAT "0123456789abcdef0123456789abcdef"
         DAT "0123456789abcdef0123456789abcdef"
         DAT "0123456789abcdef0123456789abcdef"

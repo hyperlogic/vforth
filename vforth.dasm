@@ -9,9 +9,13 @@
         SET PC, DOCOL
 
 :FIRST_WORD
-
+;        DAT EMIT_TEST
         DAT QUIT
 
+:EMIT_TEST
+        DAT DOCOL
+        DAT LIT, 0x42, EMIT
+        DAT EXIT
 
 ;;; branch test
 :BRANCH_TEST
@@ -688,7 +692,7 @@
 :_STATE
         DAT _DSPSTORE, 5, "STATE", STATE
 :STATE
-        SET PUSH, [STATE_VAR]
+        SET PUSH, STATE_VAR
 
         SET A, [I]              ; next
         ADD I, 1
@@ -700,7 +704,7 @@
 :_DP
         DAT _STATE, 2, "DP", DP
 :DP
-        SET PUSH, [DP_VAR]
+        SET PUSH, DP_VAR
 
         SET A, [I]              ; next
         ADD I, 1
@@ -712,7 +716,7 @@
 :_LATEST
         DAT _DP, 6, "LATEST", LATEST
 :LATEST
-        SET PUSH, [LATEST_VAR]
+        SET PUSH, LATEST_VAR
 
         SET A, [I]              ; next
         ADD I, 1
@@ -724,7 +728,7 @@
 :_BASE
         DAT _LATEST, 4, "BASE", BASE
 :BASE
-        SET PUSH, [BASE_VAR]
+        SET PUSH, BASE_VAR
 
         SET A, [I]              ; next
         ADD I, 1
@@ -736,7 +740,7 @@
 :_S0
         DAT _BASE, 2, "S0", S0
 :S0
-        SET PUSH, [S0_VAR]
+        SET PUSH, S0_VAR
 
         SET A, [I]              ; next
         ADD I, 1
@@ -748,7 +752,7 @@
 :_R0
         DAT _S0, 2, "R0", R0_
 :R0_
-        SET PUSH, [R0_VAR]
+        SET PUSH, R0_VAR
 
         SET A, [I]              ; next
         ADD I, 1

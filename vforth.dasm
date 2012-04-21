@@ -2,11 +2,16 @@
         SET J, [R0_VAR]         ; initialize return stack
         SET SP, [S0_VAR]        ; initialize parameter stack
 
-        ; jump directly into the interpreter
+        ; jump directly into the first word
         SUB J, 1
-        SET [J], QUIT
-        SET A, QUIT
+        SET [J], [FIRST_WORD]
+        SET A, [FIRST_WORD]
         SET PC, DOCOL
+
+:FIRST_WORD
+
+        DAT QUIT
+
 
 ;;; branch test
 :BRANCH_TEST
@@ -959,7 +964,7 @@
 ;;; output A is num unconverted chars, B is result
 :NUMBER_FUNC
         IFE A, 0                ; zero-length string
-        SET PC, NUMBER_EMPTY_STR
+        SET PC, NUMBER_FAIL
 
 ;;; start at end of string
         SET X, B                ; X is work ptr
@@ -972,8 +977,22 @@
 :NUMBER_LOOP
         SET Y, [X]              ; read char into Y
 
-;;;  TODO: ERROR out if char is out of base range.
-;;;  TODO: HANDLE A-Z (a-z)
+;;;  TODO: handle bases other then 10
+
+        IFG Y, 0x0060           ; if >= 'a'
+        SET PC, NUMBER_LOWER
+        IFG Y, 0x0040           ; if >= 'A'
+        SET PC, NUMBER_UPPER
+        IFG Y, 0x002F           ; if >= '0'
+        SET PC, NUMBER_DIGIT
+
+:NUMBER_LOWER
+        SET PC, NUMBER_FAIL
+:NUMBER_UPPER
+        SET PC, NUMBER_FAIL
+:NUMBER_DIGIT
+        IFG Y, 0x39             ; if char > '9'
+        SET PC, NUMBER_FAIL
         SUB Y, 0x30             ; 0x30 is 0 - convert digit into number
         MUL Y, C                ; multiply number by factor
         ADD B, Y                ; accumulate result in B
@@ -987,7 +1006,7 @@
 
         SET PC, POP             ; done!
 
-:NUMBER_EMPTY_STR
+:NUMBER_FAIL
         SET A, 0
         SET B, 0
         SET PC, POP             ; return
@@ -1064,10 +1083,12 @@
 ;;; input: A: header ptr
 ;;; output: A: code addr ptr
 :TOCFA_FUNC
+        SET PUSH, B             ; save B
         SET B, [A+1]            ; read len
         AND B, 0x7fff           ; mask out flags
-        ADD A, 1
-        ADD A, B
+        ADD A, 2                ; skip prev & len
+        ADD A, B                ; skip string
+        SET B, POP              ; restore B
         SET PC, POP             ; return a + len + 1;
 
 ;;; >DFA ( header-addr -- first-data-addr)  takes header and skips ptr, len, str
@@ -1304,6 +1325,9 @@
 :_INTERPRET
         DAT _QUIT, 9, "INTERPRET", INTERPRET
 :INTERPRET
+        SET [ERRNO], 0xF057 ; W
+        JSR PRINT_ERROR_FUNC
+
         JSR WORD_FUNC           ; returns len in A, ptr in B
         SET [INTERPRET_STR_LEN_VAR], A
         SET [INTERPRET_STR], B
@@ -1311,22 +1335,41 @@
         IFE 0, A                ; if not in dictionary
         SET PC, INTERPRET_NOT_FOUND
 ;;; found
+
+        SET [ERRNO], 0xF046 ; F for found
+        JSR PRINT_ERROR_FUNC
+
         SET B, [A+1]
-        AND B, 0x8000           ; B <- len & 0x8000
+        AND B, 0x8000           ; B <- (len & 0x8000) i.e. F_IMMED
+
         SET Z, A                ; Z <- dictionary word
         JSR TOCFA_FUNC          ; returns code field addr in A
         IFN B, 0
         SET PC, INTERPRET_FOUND_IMMEDIATE
 ;;; found not immediate
         IFE [STATE_VAR], 0
+        SET PC, INTERPRET_EXECUTE
+
 ;;; found not immedate executing
-        SET PC, A               ; execute it
-;;; found not imeediate compiling
+:INTERPRET_EXECUTE
+        SET [ERRNO], 0xF058 ; X for execute
+        JSR PRINT_ERROR_FUNC
+
+        SET PC, [A]               ; execute it
+;;; found not immediate compiling
         JSR COMMA_FUNC          ; write cfa to dp
         SET PC, INTERPRET_NEXT
 :INTERPRET_FOUND_IMMEDIATE
-        SET PC, A               ; execute it
+
+        SET [ERRNO], 0xF049 ; I for immediate
+        JSR PRINT_ERROR_FUNC
+
+        SET PC, [A]             ; execute it
 :INTERPRET_NOT_FOUND
+
+        SET [ERRNO], 0xF04e ; N for not-found
+        JSR PRINT_ERROR_FUNC
+
         SET A, [INTERPRET_STR_LEN_VAR]
         SET B, [INTERPRET_STR]
         JSR NUMBER_FUNC         ; output A is num unconverted chars, B is result
@@ -1348,9 +1391,14 @@
         ADD I, 1
         SET PC, A
 :INTERPRET_ERROR
-        SET PC, CRASH           ; TODO: print error!
+; TODO print meaningful error
+        SET [ERRNO], 0xF045 ; white E
+        JSR PRINT_ERROR_FUNC
+        SET PC, CRASH
 
 :CRASH
+        SET [ERRNO], 0xF043 ; white C
+        JSR PRINT_ERROR_FUNC
         DAT 0xeee0              ; crash with illegal opcode
 
 ;;; print ABC
@@ -1359,7 +1407,7 @@
 
 ;;; 64 char line input buffer
 :LINE_BUFFER
-        DAT "65 0 + EMIT 65 1 + EMIT 65 2 + EMIT", 0x20, 0
+        DAT ": DOUBLE 2 * ;", 0x20, 0
         DAT "0123456789abcdef0123456789abcdef"
         DAT "0123456789abcdef0123456789abcdef"
         DAT "0123456789abcdef0123456789abcdef"
@@ -1441,5 +1489,19 @@
         SET [SCR_PTR], 0x8140
 
         SET PC, POP
+
+;; emits A in error-line (second-line)
+:PRINT_ERROR_VAL
+       DAT 0x8020   ; second line
+:ERRNO
+       DAT 0x0020
+:PRINT_ERROR_FUNC
+       SET PUSH, B  ; save B
+       SET B, [PRINT_ERROR_VAL]
+       SET [B], [ERRNO]
+       ADD B, 1
+       SET [PRINT_ERROR_VAL], B
+       SET B, POP  ; restore B
+       SET PC, POP ; return
 
 :END

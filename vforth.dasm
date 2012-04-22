@@ -1,1178 +1,1188 @@
-;; vforth - interactive forth interpreter for dcpu16
-;; TODO:
-;;   * : doesnt work.  not sure why, i get different results on different emulators.
-;;   * The letter spew on the second line is for debugging, need more meaningfull error messages.
-;;   * input for bases other then 10 are broken.
-;;   * implement . and .S
-;;   * test primitive words
-;;   * bootstrap more compiled words
-
-:START
-        SET J, [R0_VAR]
-        SET I, [COLD_START]
-        SET A, [I]              ; next
-        ADD I, 1
-        SET PC, A
-
-:COLD_START
-        DAT QUIT
-
-;;; branch test
-:BRANCH_TEST
-        DAT DOCOL
-        ;; look up 15
-        DAT LITSTRING, 2, "15"
-        DAT PAREN_FIND
-        DAT ZBRANCH, 11
-        DAT LITSTRING, 4, "TRUE"
-        DAT TELL
-        DAT EXIT
-        DAT BRANCH, 9
-        DAT LITSTRING, 5, "FALSE"
-        DAT TELL
-        DAT EXIT
-
-;;; test interpret of single word
-:TEST
-        DAT DOCOL
-        DAT R0_, RSPSTORE       ; clear return stack
-        DAT INTERPRET           ; interpret the next word
-        DAT SHOW_STACK_IN_XYZ
-        DAT EXIT
-
-;;; For debugging display top 3 items on parameter stack in registers X Y Z.
-;;; Z is top of stack.
-:SHOW_STACK_IN_XYZ
-        SET A, SP
-        SET X, [2+A]
-        SET Y, [1+A]
-        SET Z, [A]
-        SET A, [I]              ; next
-        ADD I, 1
-        SET PC, A
-
-:SHOW_STACK_IN_XYZ_FUNC
-        SET A, SP
-        SET X, [2+A]
-        SET Y, [1+A]
-        SET Z, [A]
-        SET PC, POP
-
-;;;
-;;; Primitive words
-;;;
-;;; each word has a header
-;;;
-;;; struct header {
-;;;     header* prev;
-;;;     word immediate:1;  // msb immediate flag
-;;;     word hidden:1;     // hidden flag
-;;;     word len:14;
-;;;     word string[0];  // size of string is len (exclude immediate and hidden bits)
-;;; };
-;;;
-;;; The first word after the header is the address of the code implmenting the
-;;; word.
-;;;
-
-;;; DROP ( x -- ) remove x from the stack
-:_DROP
-        DAT 0, 4, "DROP", DROP  ; first word, size of string, string name of word
-:DROP
-        SET A, POP              ; drop top of stack
-
-        SET A, [I]              ; next
-        ADD I, 1
-        SET PC, A
-
-;;; SWAP ( x1 x2 -- x2 x1 ) exchange the top two stack items
-:_SWAP
-        DAT _DROP, 4, "SWAP", SWAP
-:SWAP
-        SET A, POP              ; swap top to items on stack
-        SET B, POP
-        SET PUSH, A
-        SET PUSH, B
-
-        SET A, [I]              ; next
-        ADD I, 1
-        SET PC, A
-
-;;; DUP ( x -- x x ) duplicate top of stack
-:_DUP
-        DAT _SWAP, 3, "DUP", DUP
-:DUP
-        SET A, SP               ; duplicate top of stack
-        SET B, [A]
-        SET PUSH, B
-        SET A, [I]              ; next
-        ADD I, 1
-        SET PC, A
-
-;;; OVER ( x1 x2 -- x1 x2 x1 )
-:_OVER
-        DAT _DUP, 4, "OVER", OVER
-:OVER
-        SET A, SP               ; get second element of stack
-        SET PUSH, [1+A]         ; and push it on top
-
-        SET A, [I]              ; next
-        ADD I, 1
-        SET PC, A
-
-;;; ROT ( a b c -- c a b )
-:_ROT
-        DAT _OVER, 3, "ROT", ROT
-:ROT
-        SET A, POP
-        SET B, POP
-        SET C, POP
-        SET PUSH, B
-        SET PUSH, A
-        SET PUSH, C
-
-        SET A, [I]              ; next
-        ADD I, 1
-        SET PC, A
-
-;;; -ROT ( a b c -- b c a )
-:_MINROT
-        DAT _ROT, 4, "-ROT", MINROT
-:MINROT
-        SET A, POP
-        SET B, POP
-        SET C, POP
-        SET PUSH, A
-        SET PUSH, C
-        SET PUSH, B
-
-        SET A, [I]              ; next
-        ADD I, 1
-        SET PC, A
-
-;;; 2DROP ( a b -- )
-:_TWODROP
-        DAT _MINROT, 5, "2DROP", TWODROP
-:TWODROP
-        SET A, POP
-        SET B, POP
-
-        SET A, [I]              ; next
-        ADD I, 1
-        SET PC, A
-
-;;; 2SWAP ( a b c d -- c d a b )
-:_TWOSWAP
-        DAT _TWODROP, 5, "2SWAP", TWOSWAP
-:TWOSWAP
-        SET A, POP
-        SET B, POP
-        SET C, POP
-        SET X, POP
-        SET PUSH, B
-        SET PUSH, A
-        SET PUSH, X
-        SET PUSH, C
-
-        SET A, [I]              ; next
-        ADD I, 1
-        SET PC, A
-
-;;; ?DUP ( a -- a a ) if a is non-zero, otherwise ( a -- a )
-:_QDUP
-        DAT _TWOSWAP, 4, "?DUP", QDUP
-:QDUP
-        SET A, SP
-        IFN 0, [A]
-        SET PUSH, [A]
-
-        SET A, [I]              ; next
-        ADD I, 1
-        SET PC, A
-
-;;; 1+ ( a -- a+1 )
-:_INCR
-        DAT _QDUP, 2, "1+", INCR
-:INCR
-        SET A, SP
-        ADD [A], 1
-
-        SET A, [I]              ; next
-        ADD I, 1
-        SET PC, A
-
-;;; 1- ( a -- a-1 )
-:_DECR
-        DAT _INCR, 2, "1-", DECR
-:DECR
-        SET A, SP
-        SUB [A], 1
-
-        SET A, [I]              ; next
-        ADD I, 1
-        SET PC, A
-
-;;; + ( a b -- a+b )
-:_ADD
-        DAT _DECR, 1, "+", ADD_
-:ADD_
-        SET A, POP
-        ADD A, POP
-        SET PUSH, A
-
-        SET A, [I]              ; next
-        ADD I, 1
-        SET PC, A
-
-;;; - ( a b -- a-b )
-:_SUB
-        DAT _ADD, 1, "-", SUB_
-:SUB_
-        SET A, POP
-        SUB A, POP
-        SET PUSH, A
-
-        SET A, [I]              ; next
-        ADD I, 1
-        SET PC, A
-
-;;; * ( a b -- a*b )
-:_MUL
-        DAT _SUB, 1, "*", MUL_
-:MUL_
-        SET A, POP
-        MUL A, POP
-        SET PUSH, A
-
-        SET A, [I]              ; next
-        ADD I, 1
-        SET PC, A
-
-;;; / ( a b -- a/b )
-:_DIV
-        DAT _MUL, 1, "/", DIV_
-:DIV_
-        SET A, POP
-        DIV A, POP
-        SET PUSH, A
-
-        SET A, [I]              ; next
-        ADD I, 1
-        SET PC, A
-
-;;; MOD ( a b -- a%b )
-:_MOD
-        DAT _DIV, 3, "MOD", MOD_
-:MOD_
-        SET A, POP
-        MOD A, POP
-        SET PUSH, A
-
-        SET A, [I]              ; next
-        ADD I, 1
-        SET PC, A
-
-;;; /MOD ( a b -- a%b )
-:_DIVMOD
-        DAT _MOD, 4, "/MOD", DIVMOD
-:DIVMOD
-        SET A, POP
-        SET B, POP
-        SET X, A
-        DIV A, B
-        MOD X, B
-        SET PUSH, X             ; push quotent
-        SET PUSH, A             ; push mod
-
-        SET A, [I]              ; next
-        ADD I, 1
-        SET PC, A
-
-;;; = ( a b - n )
-:_EQUAL
-        DAT _DIVMOD, 1, "=", EQUAL
-:EQUAL
-        SET A, POP
-        SET B, POP
-        IFE A, B
-        SET PC, EQUAL_TRUE
-        SET PUSH, 0
-        SET PC, EQUAL_ENDIF
-:EQUAL_TRUE
-        SET PUSH, 0xffff
-:EQUAL_ENDIF
-        SET A, [I]              ; next
-        ADD I, 1
-        SET PC, A
-
-;;; <> ( a b - n )
-:_NOTEQUAL
-        DAT _EQUAL, 2, "<>", NOTEQUAL
-:NOTEQUAL
-        SET A, POP
-        SET B, POP
-        IFN A, B
-        SET PC, NOTEQUAL_TRUE
-        SET PUSH, 0
-        SET PC, NOTEQUAL_ENDIF
-:NOTEQUAL_TRUE
-        SET PUSH, 0xffff
-:NOTEQUAL_ENDIF
-        SET A, [I]              ; next
-        ADD I, 1
-        SET PC, A
-
-;;; < ( a b - n )
-:_LT
-        DAT _NOTEQUAL, 1, "<", LT
-:LT
-        SET A, POP
-        SET B, POP
-        IFG A, B
-        SET PC, LT_GT
-        SET PUSH, 0
-        SET PC, LT_ENDIF
-:LT_GT
-        IFE A, B
-        SET PUSH, 0
-        IFN A, B
-        SET PUSH, 0xffff
-:LT_ENDIF
-        SET A, [I]              ; next
-        ADD I, 1
-        SET PC, A
-
-;;; > ( a b - n )
-:_GT
-        DAT _LT, 1, ">", GT
-:GT
-        SET A, POP
-        SET B, POP
-        IFG A, B
-        SET PC, GT_FALSE
-        SET PUSH, 0xffff
-        SET PC, GT_ENDIF
-:GT_FALSE
-        SET PUSH, 0
-:GT_ENDIF
-        SET A, [I]              ; next
-        ADD I, 1
-        SET PC, A
-
-;;; <= ( a b - n )
-:_LTE
-        DAT _GT, 2, "<=", LTE
-:LTE
-        SET A, POP
-        SET B, POP
-        IFG A, B
-        SET PC, LTE_TRUE
-        SET PUSH, 0
-        SET PC, LTE_ENDIF
-:LTE_TRUE
-        SET PUSH, 0xffff
-:LTE_ENDIF
-        SET A, [I]              ; next
-        ADD I, 1
-        SET PC, A
-
-;;; >= ( a b - n )
-:_GTE
-        DAT _LTE, 2, ">=", GTE
-:GTE
-        SET A, POP
-        SET B, POP
-        IFG A, B
-        SET PC, GTE_GT
-        SET PUSH, 0xffff
-        SET PC, GTE_ENDIF
-:GTE_GT
-        IFE A, B
-        SET PUSH, 0xffff
-        IFN A, B
-        SET PUSH, 0
-:GTE_ENDIF
-        SET A, [I]              ; next
-        ADD I, 1
-        SET PC, A
-
-;;; 0= ( a -- n )   does top of stack equal zero
-:_ISZERO
-        DAT _GTE, 2, "0=", ISZERO
-:ISZERO
-        SET A, POP
-        IFE A, 0
-        SET PUSH, 0xffff
-        IFN A, 0
-        SET PUSH, 0
-
-        SET A, [I]              ; next
-        ADD I, 1
-        SET PC, A
-
-
-;;; 0<> ( a -- n )   does top of stack not equal zero
-:_ISNOTZERO
-        DAT _ISZERO, 3, "0<>", ISNOTZERO
-:ISNOTZERO
-        SET A, POP
-        IFE A, 0
-        SET PUSH, 0
-        IFN A, 0
-        SET PUSH, 0xffff
-
-        SET A, [I]              ; next
-        ADD I, 1
-        SET PC, A
-
-;;; 0< ( a -- n )
-:_LTZERO
-        DAT _ISNOTZERO, 2, "0<", LTZERO
-:LTZERO
-        SET A, POP
-        IFG A, 0
-        SET PC, LTZERO_FALSE
-        IFE A, 0
-        SET PC, LTZERO_FALSE
-        SET PUSH, 0xffff
-        SET PC, LTZERO_ENDIF
-:LTZERO_FALSE
-        SET PUSH, 0
-:LTZERO_ENDIF
-        SET A, [I]              ; next
-        ADD I, 1
-        SET PC, A
-
-;;; 0> ( a -- n )
-:_GTZERO
-        DAT _LTZERO, 2, "0>", GTZERO
-:GTZERO
-        SET A, POP
-        IFG A, 0
-        SET PC, GTZERO_TRUE
-        SET PUSH, 0
-        SET PC, GTZERO_ENDIF
-:GTZERO_TRUE
-        SET PUSH, 0xffff
-:GTZERO_ENDIF
-        SET A, [I]              ; next
-        ADD I, 1
-        SET PC, A
-
-;;; 0<= ( a -- n )
-:_LTEZERO
-        DAT _LTZERO, 3, "0<=", LTEZERO
-:LTEZERO
-        SET A, POP
-        IFG A, 0
-        SET PC, LTEZERO_FALSE
-        SET PUSH, 0xffff
-        SET PC, LTEZERO_ENDIF
-:LTEZERO_FALSE
-        SET PUSH, 0
-:LTEZERO_ENDIF
-        SET A, [I]              ; next
-        ADD I, 1
-        SET PC, A
-
-;;; 0>= ( a -- n )
-:_GTEZERO
-        DAT _LTEZERO, 3, "0>=", GTEZERO
-:GTEZERO
-        SET A, POP
-        IFG A, 0
-        SET PC, GTEZERO_TRUE
-        IFE A, 0
-        SET PC, GTEZERO_TRUE
-        SET PUSH, 0
-        SET PC, GTEZERO_ENDIF
-:GTEZERO_TRUE
-        SET PUSH, 0xffff
-:GTEZERO_ENDIF
-        SET A, [I]              ; next
-        ADD I, 1
-        SET PC, A
-
-;;; AND ( a b -- n )
-:_AND
-        DAT _GTEZERO, 3, "AND", AND_
-:AND_
-        SET A, POP
-        AND A, POP
-        SET PUSH, A
-
-        SET A, [I]              ; next
-        ADD I, 1
-        SET PC, A
-
-;;; OR ( a b -- n )
-:_OR
-        DAT _AND, 2, "OR", OR_
-:OR_
-        SET A, POP
-        BOR A, POP
-        SET PUSH, A
-
-        SET A, [I]              ; next
-        ADD I, 1
-        SET PC, A
-
-;;; XOR ( a b -- n )
-:_XOR
-        DAT _OR, 3, "XOR", XOR_
-:XOR_
-        SET A, POP
-        XOR A, POP
-        SET PUSH, A
-
-        SET A, [I]              ; next
-        ADD I, 1
-        SET PC, A
-
-;;; INVERT ( a -- n )
-:_INVERT
-        DAT _XOR, 6, "INVERT", INVERT
-:INVERT
-        SET A, POP
-        XOR A, 0xffff
-        SET PUSH, A
-
-        SET A, [I]              ; next
-        ADD I, 1
-        SET PC, A
-
-;;; EXIT ( -- )  Used to exit compiled words
-:_EXIT
-        DAT _INVERT, 4, "EXIT", EXIT
-:EXIT
-        SET I, [J]              ; pop return stack into I
-        ADD J, 1
-
-        SET A, [I]              ; next
-        ADD I, 1
-        SET PC, A
-
-;;; LIT ( -- lit )  ; pushes next word in instruction stream on stack, then skip it.
-:_LIT
-        DAT _EXIT, 3, "LIT", LIT
-:LIT
-        SET PUSH, [I]           ; push next 16-bit word onto parameter stack
-        ADD I, 1                ; skip it
-
-        SET A, [I]              ; next
-        ADD I, 1
-        SET PC, A
-
-;;; ! ( data addr -- ) store data at given addr
-:_STORE
-        DAT _LIT, 1, "!", STORE
-:STORE
-        SET A, POP
-        SET [A], POP
-
-        SET A, [I]              ; next
-        ADD I, 1
-        SET PC, A
-
-;;; @ ( addr -- data ) fetch data at given addr
-:_FETCH
-        DAT _STORE, 1, "@", FETCH
-:FETCH
-        SET A, POP
-        SET PUSH, [A]
-
-        SET A, [I]              ; next
-        ADD I, 1
-        SET PC, A
-
-;;; +! ( amount addr -- ) add amount to data at given addr
-:_ADDSTORE
-        DAT _FETCH, 2, "+!", ADDSTORE
-:ADDSTORE
-        SET A, POP
-        ADD [A], POP
-
-        SET A, [I]              ; next
-        ADD I, 1
-        SET PC, A
-
-;;; -! ( amount addr -- ) subtract amount to data at given addr
-:_SUBSTORE
-        DAT _ADDSTORE, 2, "+!", SUBSTORE
-:SUBSTORE
-        SET A, POP
-        SUB [A], POP
-
-        SET A, [I]              ; next
-        ADD I, 1
-        SET PC, A
-
-;;; >R ( x -- ) push x onto return stack
-:_RSPPUSH
-        DAT _SUBSTORE, 2, ">R", RSPPUSH
-:RSPPUSH
-        SET A, POP              ; pop from param stack
-        SUB J, 1                ; push onto return stack
-        SET [J], A
-
-        SET A, [I]              ; next
-        ADD I, 1
-        SET PC, A
-
-;;; <R ( -- x ) pop top of return stack
-:_RSPPOP
-        DAT _RSPPUSH, 2, "<R", RSPPOP
-:RSPPOP
-        SET A, [J]              ; pop off of return stack
-        ADD J, 1
-        SET PUSH, A             ; push onto param stack
-
-        SET A, [I]              ; next
-        ADD I, 1
-        SET PC, A
-
-;;; RSP@ ( -- x ) fetch top of return stack
-:_RSPFETCH
-        DAT _RSPPOP, 4, "RSP@", RSPFETCH
-:RSPFETCH
-        SET PUSH, J
-
-        SET A, [I]              ; next
-        ADD I, 1
-        SET PC, A
-
-;;; RSP! ( x -- ) store top of return stack
-:_RSPSTORE
-        DAT _RSPFETCH, 4, "RSP!", RSPSTORE
-:RSPSTORE
-        SET J, POP
-
-        SET A, [I]              ; next
-        ADD I, 1
-        SET PC, A
-
-;;; RDROP ( -- ) drop top of return stack
-:_RDROP
-        DAT _RSPSTORE, 5, "RDROP", RDROP
-:RDROP
-        ADD J, 1
-
-        SET A, [I]              ; next
-        ADD I, 1
-        SET PC, A
-
-;;; DSP@ ( -- x ) fetch top of parameter stack
-:_DSPFETCH
-        DAT _RDROP, 4, "DSP@", DSPFETCH
-:DSPFETCH
-        SET PUSH, SP
-
-        SET A, [I]              ; next
-        ADD I, 1
-        SET PC, A
-
-;;; DSP! ( x -- ) store top of parameter stack
-:_DSPSTORE
-        DAT _DSPFETCH, 4, "DSP!", DSPSTORE
-:DSPSTORE
-        SET A, POP
-        SET SP, A
-
-        SET A, [I]              ; next
-        ADD I, 1
-        SET PC, A
-
-;;;
-;;; variables/constants
-;;; TODO: these can be macros someday, or inline words?
-
-;;; STATE ( -- flag ) true if currently in compliation state
-:STATE_VAR
-        DAT 0                   ; 0xffff if in compile mode
-:_STATE
-        DAT _DSPSTORE, 5, "STATE", STATE
-:STATE
-        SET PUSH, STATE_VAR
-
-        SET A, [I]              ; next
-        ADD I, 1
-        SET PC, A
-
-;;; DP ( -- addr ) points to next free word of memory, compiled words go here.
-:DP_VAR
-        DAT END                 ; free memory ptr
-:_DP
-        DAT _STATE, 2, "DP", DP
-:DP
-        SET PUSH, DP_VAR
-
-        SET A, [I]              ; next
-        ADD I, 1
-        SET PC, A
-
-;;; LATEST ( -- addr ) dictionary ptr
-:LATEST_VAR
-        DAT _INTERPRET         ; dictionary ptr
-:_LATEST
-        DAT _DP, 6, "LATEST", LATEST
-:LATEST
-        SET PUSH, LATEST_VAR
-
-        SET A, [I]              ; next
-        ADD I, 1
-        SET PC, A
-
-;;; BASE ( -- radix ) current base for reading/printing
-:BASE_VAR
-        DAT 10                  ; current radix for printing reading
-:_BASE
-        DAT _LATEST, 4, "BASE", BASE
-:BASE
-        SET PUSH, BASE_VAR
-
-        SET A, [I]              ; next
-        ADD I, 1
-        SET PC, A
-
-;;; S0 ( -- addr ) top of parameter stack
-:S0_VAR
-        DAT 0xffff              ; top of parameter stack
-:_S0
-        DAT _BASE, 2, "S0", S0
-:S0
-        SET PUSH, S0_VAR
-
-        SET A, [I]              ; next
-        ADD I, 1
-        SET PC, A
-
-;;; R0 ( -- addr ) top of parameter stack
-:R0_VAR
-        DAT 0x7fff              ; top of return stack
-:_R0
-        DAT _S0, 2, "R0", R0_
-:R0_
-        SET PUSH, R0_VAR
-
-        SET A, [I]              ; next
-        ADD I, 1
-        SET PC, A
-
-;;; VERSION ( -- version )
-:VERSION_VAR
-        DAT 1                   ; current vforth version!
-:_VERSION
-        DAT _R0, 2, "VERSION", VERSION
-:VERSION
-        SET PUSH, VERSION_VAR
-
-        SET A, [I]              ; next
-        ADD I, 1
-        SET PC, A
-
-;;; F_IMMED ( -- mask )
-:F_IMMED_VAR
-        DAT 0x8000
-:_F_IMMED
-        DAT _VERSION, 7, "F_IMMED", F_IMMED
-:F_IMMED
-        SET PUSH, F_IMMED_VAR
-
-        SET A, [I]              ; next
-        ADD I, 1
-        SET PC, A
-
-;;; F_HIDDEN ( -- mask )
-:F_HIDDEN_VAR
-        DAT 0x4000
-:_F_HIDDEN
-        DAT _F_IMMED, 8, "F_HIDDEN", F_HIDDEN
-:F_HIDDEN
-        SET PUSH, F_HIDDEN_VAR
-
-        SET A, [I]              ; next
-        ADD I, 1
-        SET PC, A
-
-;;; F_LENMASK
-:F_LENMASK_VAR
-        DAT 0x3fff
-:_F_LENMASK
-        DAT _F_HIDDEN, 9, "F_LENMASK"
-:F_LENMASK
-        SET PUSH, F_LENMASK_VAR
-
-        SET A, [I]              ; next
-        ADD I, 1
-        SET PC, A
-
-
-;;; DOCOL ( -- addr-of-docol-code )
-:DOCOL_VAR
-        DAT DOCOL
-:_DOCOL
-        DAT _F_LENMASK, 5, "DOCOL", DOCOL_
-:DOCOL_
-        SET PUSH, DOCOL_VAR
-
-        SET A, [I]              ; next
-        ADD I, 1
-        SET PC, A
-
-;;; used to interpret compiled words
-:DOCOL
-        SUB J, 1                ; push I onto return stack
-        SET [J], I
-        ADD A, 1                ; A points to codeword, so make
-        SET I, A                ; I point to first data word
-        SET A, [I]              ; next
-        ADD I, 1
-        SET PC, A
-
-;;; DODOES ( -- addr-of-dodoes-code )
-:DODOES_VAR
-        DAT DODOES
-:_DODOES
-        DAT _DOCOL, 6, "DODOES", DODOES_
-:DODOES_
-        SET PUSH, DODOES_VAR
-
-        SET A, [I]              ; next
-        ADD I, 1
-        SET PC, A
-
-;;; used interpret variables
-:DODOES
-        SET A, I
-        ADD A, 1                ; A <- data addr
-        ADD I, [I]              ; set I to point to first behavior word
-        SET PUSH, A             ; push data-addr
-        SET A, [I]              ; next
-        ADD I, 1
-        SET PC, A
-
-;;; KEY ( -- key ) currently reads from LINE_BUFFER
-:_KEY
-        DAT _DODOES, 3, "KEY", KEY
-:KEY
-        JSR KEY_FUNC
-        SET PUSH, A
-
-        SET A, [I]              ; next
-        ADD I, 1
-        SET PC, A
-
-;;; RETURNS next key in A
-:KEY_FUNC
-        SET A, [CUR_KEY]
-        IFN [A], 0
-        SET PC, KEY_VALID
-        JSR START_PROMPT           ; read more input
-        SET [CUR_KEY], LINE_BUFFER
-        SET [CURSOR], 0x8000       ; reset emit cursor
-        SET PC, KEY_FUNC
-:KEY_VALID
-        ADD [CUR_KEY], 1
-        SET A, [A]
-        SET PC, POP
-
-;;; KEY variables
-:CUR_KEY
-        DAT LINE_BUFFER
-
-;;; EMIT ( key -- ) currently just dumps into SCREEN
-:_EMIT
-        DAT _KEY, 4, "EMIT", EMIT
-:EMIT
-        SET A, POP
-        BOR A, 0xF000           ; make it white
-        SET B, [CURSOR]
-        SET [B], A
-        ADD [CURSOR], 1
-
-        SET A, [I]              ; next
-        ADD I, 1
-        SET PC, A
-
-;;; EMIT variables
-:CURSOR
-        DAT 0x8000
-:SCREEN
-        DAT 0x8000
-
-;;; WORD ( -- ptr len ) returns length and ptr to word string
-;;; TODO: handle null at end of word instead of just space
-:_WORD
-        DAT _EMIT, 4, "WORD", WORD_
-:WORD_
-        JSR WORD_FUNC
-        SET PUSH, B
-        SET PUSH, A
-
-        SET A, [I]              ; next
-        ADD I, 1
-        SET PC, A
-
-;;; returns len in A, ptr in B
-:WORD_FUNC
-:WORD_SKIP_SPACE
-        JSR KEY_FUNC
-        IFE A, 0x005c          ; if backslash, skip the comment
-        SET PC, WORD_SKIP_LINE
-        IFE A, 0x0020          ; if space, keep looking
-        SET PC, WORD_SKIP_SPACE
-
-        ;; search for end of word storing characters as we go
-        SET X, WORD_BUFFER      ; x is ptr into word_buffer
-:WORD_EACH_CHAR
-        SET [X], A
-        ADD X, 1
-        JSR KEY_FUNC
-        IFN A, 0x0020           ; if not space keep looping
-        SET PC, WORD_EACH_CHAR
-
-        SUB X, WORD_BUFFER      ; calc length
-        SET A, X                ; A <- length
-        SET B, WORD_BUFFER      ; B <- str addr
-        SET PC, POP             ; return
-
-        ;; skip until new-line
-:WORD_SKIP_LINE
-        JSR KEY_FUNC
-        IFN A, 0x000a           ; new line
-        SET PC, WORD_SKIP_LINE
-        SET PC, WORD_FUNC
-
-
-;;; WORD variables
-:WORD_BUFFER
-        DAT "0123456789abcdef0123456789abcdef"  ; 32-char word buffer
-
-
-;;; NUMBER ( ptr len -- number unconverted-characters )
-;;; reads from BASE_VAR
-:_NUMBER
-        DAT _WORD, 6, "NUMBER", NUMBER
-:NUMBER
-        SET A, POP              ; A <- len
-        SET B, POP              ; B <- ptr
-        JSR NUMBER_FUNC
-        SET PUSH, B             ; number
-        SET PUSH, A             ; unconverted chars
-
-        SET A, [I]              ; next
-        ADD I, 1
-        SET PC, A
-
-;;; input A is len, B is ptr
-;;; output A is num unconverted chars, B is result
-:NUMBER_FUNC
-        IFE A, 0                ; zero-length string
-        SET PC, NUMBER_FAIL
-
-;;; start at end of string
-        SET X, B                ; X is work ptr
-        ADD X, A
-        SUB X, 1
-
-        SET C, 1                ; C is factor
-        SET B, 0                ; B is number
-
-:NUMBER_LOOP
-        SET Y, [X]              ; read char into Y
-
-;;;  TODO: handle bases other then 10
-
-        IFG Y, 0x0060           ; if >= 'a'
-        SET PC, NUMBER_LOWER
-        IFG Y, 0x0040           ; if >= 'A'
-        SET PC, NUMBER_UPPER
-        IFG Y, 0x002F           ; if >= '0'
-        SET PC, NUMBER_DIGIT
-
-:NUMBER_LOWER
-        SET PC, NUMBER_FAIL
-:NUMBER_UPPER
-        SET PC, NUMBER_FAIL
-:NUMBER_DIGIT
-        IFG Y, 0x39             ; if char > '9'
-        SET PC, NUMBER_FAIL
-        SUB Y, 0x30             ; 0x30 is 0 - convert digit into number
-        MUL Y, C                ; multiply number by factor
-        ADD B, Y                ; accumulate result in B
-
-        SUB X, 1                ; move str ptr
-        SUB A, 1                ; we converted one character!
-        MUL C, [BASE_VAR]       ; factor *= base
-
-        IFN A, 0
-        SET PC, NUMBER_LOOP
-
-        SET PC, POP             ; done!
-
-:NUMBER_FAIL
-        SET A, 0
-        SET B, 0
-        SET PC, POP             ; return
-
-;;; (FIND) ( addr len -- dictionary-header-addr )  looks up word in dictionary
-;;; doesnt find words flagged as hidden
-:_PAREN_FIND
-        DAT _NUMBER, 6, "(FIND)", PAREN_FIND
-:PAREN_FIND
-        SET A, POP              ; A <- len
-        SET B, POP              ; B <- addr
-        JSR FIND_FUNC
-        SET PUSH, A
-
-        SET A, [I]              ; next
-        ADD I, 1
-        SET PC, A
-
-;;; input: A len, B addr
-;;; output: dictionary header addr, or 0 if none found.
-:FIND_FUNC
-        SET X, [LATEST_VAR]
-:FIND_WORD_LOOP
-        IFE X, 0                ; end of dictionary
-        SET PC, FIND_NOT_FOUND
-
-        SET C, [1+X]            ; C <- len
-        AND C, 0x7fff           ; mask out F_IMMED flag, but include F_HIDDEN flag
-        IFN A, C                ; compare lengths, This will exclude hidden words.
-        SET PC, FIND_NEXT_WORD
-
-        ;; compare strings
-        SET C, 0                ; loop index
-:FIND_STRCMP_LOOP
-        IFE C, A
-        SET PC, FIND_STRCMP_SUCCESS
-        SET Y, B
-        ADD Y, C                ; y <- search-string + c
-        SET Z, X
-        ADD Z, 2
-        ADD Z, C                ; z <- dict-string + c
-        IFN [Y], [Z]
-        SET PC, FIND_STRCMP_FAIL
-        ADD C, 1
-        SET PC, FIND_STRCMP_LOOP
-
-:FIND_STRCMP_SUCCESS
-        SET A, X
-        SET PC, POP             ; return header addr
-
-:FIND_STRCMP_FAIL
-:FIND_NEXT_WORD
-        SET X, [X]              ; follow prev ptr
-        SET PC, FIND_WORD_LOOP
-
-:FIND_NOT_FOUND
-        SET A, 0
-        SET PC, POP             ; return 0
-
-
-;;; >CFA ( header-addr -- first-code-addr)  takes header and skips ptr, len & str.
-:_TOCFA
-        DAT _PAREN_FIND, 4, ">CFA", TOCFA
-:TOCFA
-        SET A, POP
-        JSR TOCFA_FUNC
-        SET PUSH, A
-
-        SET A, [I]              ; next
-        ADD I, 1
-        SET PC, A
-
-
-;;; input: A: header ptr
-;;; output: A: code addr ptr
-:TOCFA_FUNC
-        SET PUSH, B             ; save B
-        SET B, [1+A]            ; read len
-        AND B, 0x7fff           ; mask out flags
-        ADD A, 2                ; skip prev & len
-        ADD A, B                ; skip string
-        SET B, POP              ; restore B
-        SET PC, POP             ; return a + len + 1;
-
-;;; >DFA ( header-addr -- first-data-addr)  takes header and skips ptr, len, str
-;;;                                         and first word.
-:_TODFA
-        DAT _TOCFA, 4, ">DFA", DOCOL
-:TODFA
-        DAT INCR, EXIT
-
-;;; HEADER ( addr len -- ) writes word header into free memory
-:_HEADER
-        DAT _TODFA, 6, "HEADER", HEADER
-:HEADER
-        SET A, POP                  ; A <- len
-        SET B, POP                  ; B <- addr
-        SET X, [DP_VAR]             ; X <- start of header
-        SET C, X                    ; C <- output ptr
-        SET [C], [LATEST_VAR]       ; write prev
-        ADD C, 1
-        SET [C], A                  ; write len
-        ADD C, 1
-:HEADER_WRITE_STR                   ; write string word by word
-        IFE A, 0
-        SET PC, HEADER_DONE
-        SET [C], [B]
-        ADD C, 1                    ; C++
-        ADD B, 1                    ; B++
-        SUB A, 1                    ; A--
-        SET PC, HEADER_WRITE_STR
-:HEADER_DONE
-        SET [LATEST_VAR], X         ; LATEST_VAR points to the header
-        SET [DP_VAR], C             ; DP_VAR points past end of header
-
-        SET A, [I]              ; next
-        ADD I, 1
-        SET PC, A
-
-;;; , ( word -- ) stores word at DP then adds 1 to DP
-:_COMMA
-        DAT _HEADER, 1, ",", COMMA
-:COMMA
-        SET A, POP
-        JSR COMMA_FUNC
-
-        SET A, [I]              ; next
-        ADD I, 1
-        SET PC, A
-
-:COMMA_FUNC
-        SET X, [DP_VAR]
-        SET [X], A
-        ADD X, 1
-        SET [DP_VAR], X
-        SET PC, POP
-
-;;; [ ( -- ) switch to immediate mode
-;;; F_IMMEDATE
-:_LBRAC
-        DAT _COMMA, 0xf001, "[", LBRAC
-:LBRAC
-        SET [STATE_VAR], 0
-
-        SET A, [I]              ; next
-        ADD I, 1
-        SET PC, A
-
-;;; ] ( -- ) switch to compile mode
-:_RBRAC
-        DAT _LBRAC, 1, "]", RBRAC
-:RBRAC
-        SET [STATE_VAR], 0xffff
-
-        SET A, [I]              ; next
-        ADD I, 1
-        SET PC, A
-
-;;; : ( -- ) defines word!
-:_COLON
-        DAT _RBRAC, 1, ":", DOCOL
-:COLON
+ ;; vforth - interactive forth interpreter for dcpu16
+ ;; TODO:
+ ;;   * The letter spew on the second line is for debugging, need more meaningfull error messages.
+ ;;   * input for bases other then 10 are broken.
+ ;;   * implement . and .S
+ ;;   * test primitive words
+ ;;   * bootstrap more compiled words
+
+ :START
+         SET J, [R0_VAR]
+         SET I, [COLD_START]
+         SET A, [I]              ; next
+         ADD I, 1
+         SET PC, A
+
+ :COLD_START
+         DAT QUIT
+
+ ;;; branch test
+ :BRANCH_TEST
+         DAT DOCOL
+         ;; look up 15
+         DAT LITSTRING, 2, "15"
+         DAT PAREN_FIND
+         DAT ZBRANCH, 11
+         DAT LITSTRING, 4, "TRUE"
+         DAT TELL
+         DAT EXIT
+         DAT BRANCH, 9
+         DAT LITSTRING, 5, "FALSE"
+         DAT TELL
+         DAT EXIT
+
+ ;;; test interpret of single word
+ :TEST
+         DAT DOCOL
+         DAT R0_, RSPSTORE       ; clear return stack
+         DAT INTERPRET           ; interpret the next word
+         DAT SHOW_STACK_IN_XYZ
+         DAT EXIT
+
+ ;;; For debugging display top 3 items on parameter stack in registers X Y Z.
+ ;;; Z is top of stack.
+ :SHOW_STACK_IN_XYZ
+         SET A, SP
+         SET X, [2+A]
+         SET Y, [1+A]
+         SET Z, [A]
+         SET A, [I]              ; next
+         ADD I, 1
+         SET PC, A
+
+ :SHOW_STACK_IN_XYZ_FUNC
+         SET A, SP
+         SET X, [2+A]
+         SET Y, [1+A]
+         SET Z, [A]
+         SET PC, POP
+
+ ;;;
+ ;;; Primitive words
+ ;;;
+ ;;; each word has a header
+ ;;;
+ ;;; struct header {
+ ;;;     header* prev;
+ ;;;     word immediate:1;  // msb immediate flag
+ ;;;     word hidden:1;     // hidden flag
+ ;;;     word len:14;
+ ;;;     word string[0];  // size of string is len (exclude immediate and hidden bits)
+ ;;; };
+ ;;;
+ ;;; The first word after the header is the address of the code implmenting the
+ ;;; word.
+ ;;;
+
+ ;;; DROP ( x -- ) remove x from the stack
+ :_DROP
+         DAT 0, 4, "DROP", DROP  ; first word, size of string, string name of word
+ :DROP
+         SET A, POP              ; drop top of stack
+
+         SET A, [I]              ; next
+         ADD I, 1
+         SET PC, A
+
+ ;;; SWAP ( x1 x2 -- x2 x1 ) exchange the top two stack items
+ :_SWAP
+         DAT _DROP, 4, "SWAP", SWAP
+ :SWAP
+         SET A, POP              ; swap top to items on stack
+         SET B, POP
+         SET PUSH, A
+         SET PUSH, B
+
+         SET A, [I]              ; next
+         ADD I, 1
+         SET PC, A
+
+ ;;; DUP ( x -- x x ) duplicate top of stack
+ :_DUP
+         DAT _SWAP, 3, "DUP", DUP
+ :DUP
+         SET A, SP               ; duplicate top of stack
+         SET B, [A]
+         SET PUSH, B
+         SET A, [I]              ; next
+         ADD I, 1
+         SET PC, A
+
+ ;;; OVER ( x1 x2 -- x1 x2 x1 )
+ :_OVER
+         DAT _DUP, 4, "OVER", OVER
+ :OVER
+         SET A, SP               ; get second element of stack
+         SET PUSH, [1+A]         ; and push it on top
+
+         SET A, [I]              ; next
+         ADD I, 1
+         SET PC, A
+
+ ;;; ROT ( a b c -- c a b )
+ :_ROT
+         DAT _OVER, 3, "ROT", ROT
+ :ROT
+         SET A, POP
+         SET B, POP
+         SET C, POP
+         SET PUSH, B
+         SET PUSH, A
+         SET PUSH, C
+
+         SET A, [I]              ; next
+         ADD I, 1
+         SET PC, A
+
+ ;;; -ROT ( a b c -- b c a )
+ :_MINROT
+         DAT _ROT, 4, "-ROT", MINROT
+ :MINROT
+         SET A, POP
+         SET B, POP
+         SET C, POP
+         SET PUSH, A
+         SET PUSH, C
+         SET PUSH, B
+
+         SET A, [I]              ; next
+         ADD I, 1
+         SET PC, A
+
+ ;;; 2DROP ( a b -- )
+ :_TWODROP
+         DAT _MINROT, 5, "2DROP", TWODROP
+ :TWODROP
+         SET A, POP
+         SET B, POP
+
+         SET A, [I]              ; next
+         ADD I, 1
+         SET PC, A
+
+ ;;; 2SWAP ( a b c d -- c d a b )
+ :_TWOSWAP
+         DAT _TWODROP, 5, "2SWAP", TWOSWAP
+ :TWOSWAP
+         SET A, POP
+         SET B, POP
+         SET C, POP
+         SET X, POP
+         SET PUSH, B
+         SET PUSH, A
+         SET PUSH, X
+         SET PUSH, C
+
+         SET A, [I]              ; next
+         ADD I, 1
+         SET PC, A
+
+ ;;; ?DUP ( a -- a a ) if a is non-zero, otherwise ( a -- a )
+ :_QDUP
+         DAT _TWOSWAP, 4, "?DUP", QDUP
+ :QDUP
+         SET A, SP
+         IFN 0, [A]
+         SET PUSH, [A]
+
+         SET A, [I]              ; next
+         ADD I, 1
+         SET PC, A
+
+ ;;; 1+ ( a -- a+1 )
+ :_INCR
+         DAT _QDUP, 2, "1+", INCR
+ :INCR
+         SET A, SP
+         ADD [A], 1
+
+         SET A, [I]              ; next
+         ADD I, 1
+         SET PC, A
+
+ ;;; 1- ( a -- a-1 )
+ :_DECR
+         DAT _INCR, 2, "1-", DECR
+ :DECR
+         SET A, SP
+         SUB [A], 1
+
+         SET A, [I]              ; next
+         ADD I, 1
+         SET PC, A
+
+ ;;; + ( a b -- a+b )
+ :_ADD
+         DAT _DECR, 1, "+", ADD_
+ :ADD_
+         SET A, POP
+         ADD A, POP
+         SET PUSH, A
+
+         SET A, [I]              ; next
+         ADD I, 1
+         SET PC, A
+
+ ;;; - ( a b -- a-b )
+ :_SUB
+         DAT _ADD, 1, "-", SUB_
+ :SUB_
+         SET B, POP
+         SET A, POP
+         SUB A, B
+         SET PUSH, A
+
+         SET A, [I]              ; next
+         ADD I, 1
+         SET PC, A
+
+ ;;; * ( a b -- a*b )
+ :_MUL
+         DAT _SUB, 1, "*", MUL_
+ :MUL_
+         SET A, POP
+         MUL A, POP
+         SET PUSH, A
+
+         SET A, [I]              ; next
+         ADD I, 1
+         SET PC, A
+
+ ;;; / ( a b -- a/b )
+ :_DIV
+         DAT _MUL, 1, "/", DIV_
+ :DIV_
+         SET A, POP
+         DIV A, POP
+         SET PUSH, A
+
+         SET A, [I]              ; next
+         ADD I, 1
+         SET PC, A
+
+ ;;; MOD ( a b -- a%b )
+ :_MOD
+         DAT _DIV, 3, "MOD", MOD_
+ :MOD_
+         SET A, POP
+         MOD A, POP
+         SET PUSH, A
+
+         SET A, [I]              ; next
+         ADD I, 1
+         SET PC, A
+
+ ;;; /MOD ( a b -- a%b )
+ :_DIVMOD
+         DAT _MOD, 4, "/MOD", DIVMOD
+ :DIVMOD
+         SET A, POP
+         SET B, POP
+         SET X, A
+         DIV A, B
+         MOD X, B
+         SET PUSH, X             ; push quotent
+         SET PUSH, A             ; push mod
+
+         SET A, [I]              ; next
+         ADD I, 1
+         SET PC, A
+
+ ;;; = ( a b - n )
+ :_EQUAL
+         DAT _DIVMOD, 1, "=", EQUAL
+ :EQUAL
+         SET A, POP
+         SET B, POP
+         IFE A, B
+         SET PC, EQUAL_TRUE
+         SET PUSH, 0
+         SET PC, EQUAL_ENDIF
+ :EQUAL_TRUE
+         SET PUSH, 0xffff
+ :EQUAL_ENDIF
+         SET A, [I]              ; next
+         ADD I, 1
+         SET PC, A
+
+ ;;; <> ( a b - n )
+ :_NOTEQUAL
+         DAT _EQUAL, 2, "<>", NOTEQUAL
+ :NOTEQUAL
+         SET A, POP
+         SET B, POP
+         IFN A, B
+         SET PC, NOTEQUAL_TRUE
+         SET PUSH, 0
+         SET PC, NOTEQUAL_ENDIF
+ :NOTEQUAL_TRUE
+         SET PUSH, 0xffff
+ :NOTEQUAL_ENDIF
+         SET A, [I]              ; next
+         ADD I, 1
+         SET PC, A
+
+ ;;; < ( a b - n )
+ :_LT
+         DAT _NOTEQUAL, 1, "<", LT
+ :LT
+         SET A, POP
+         SET B, POP
+         IFG A, B
+         SET PC, LT_GT
+         SET PUSH, 0
+         SET PC, LT_ENDIF
+ :LT_GT
+         IFE A, B
+         SET PUSH, 0
+         IFN A, B
+         SET PUSH, 0xffff
+ :LT_ENDIF
+         SET A, [I]              ; next
+         ADD I, 1
+         SET PC, A
+
+ ;;; > ( a b - n )
+ :_GT
+         DAT _LT, 1, ">", GT
+ :GT
+         SET A, POP
+         SET B, POP
+         IFG A, B
+         SET PC, GT_FALSE
+         SET PUSH, 0xffff
+         SET PC, GT_ENDIF
+ :GT_FALSE
+         SET PUSH, 0
+ :GT_ENDIF
+         SET A, [I]              ; next
+         ADD I, 1
+         SET PC, A
+
+ ;;; <= ( a b - n )
+ :_LTE
+         DAT _GT, 2, "<=", LTE
+ :LTE
+         SET A, POP
+         SET B, POP
+         IFG A, B
+         SET PC, LTE_TRUE
+         SET PUSH, 0
+         SET PC, LTE_ENDIF
+ :LTE_TRUE
+         SET PUSH, 0xffff
+ :LTE_ENDIF
+         SET A, [I]              ; next
+         ADD I, 1
+         SET PC, A
+
+ ;;; >= ( a b - n )
+ :_GTE
+         DAT _LTE, 2, ">=", GTE
+ :GTE
+         SET A, POP
+         SET B, POP
+         IFG A, B
+         SET PC, GTE_GT
+         SET PUSH, 0xffff
+         SET PC, GTE_ENDIF
+ :GTE_GT
+         IFE A, B
+         SET PUSH, 0xffff
+         IFN A, B
+         SET PUSH, 0
+ :GTE_ENDIF
+         SET A, [I]              ; next
+         ADD I, 1
+         SET PC, A
+
+ ;;; 0= ( a -- n )   does top of stack equal zero
+ :_ISZERO
+         DAT _GTE, 2, "0=", ISZERO
+ :ISZERO
+         SET A, POP
+         IFE A, 0
+         SET PUSH, 0xffff
+         IFN A, 0
+         SET PUSH, 0
+
+         SET A, [I]              ; next
+         ADD I, 1
+         SET PC, A
+
+
+ ;;; 0<> ( a -- n )   does top of stack not equal zero
+ :_ISNOTZERO
+         DAT _ISZERO, 3, "0<>", ISNOTZERO
+ :ISNOTZERO
+         SET A, POP
+         IFE A, 0
+         SET PUSH, 0
+         IFN A, 0
+         SET PUSH, 0xffff
+
+         SET A, [I]              ; next
+         ADD I, 1
+         SET PC, A
+
+ ;;; 0< ( a -- n )
+ :_LTZERO
+         DAT _ISNOTZERO, 2, "0<", LTZERO
+ :LTZERO
+         SET A, POP
+         IFG A, 0
+         SET PC, LTZERO_FALSE
+         IFE A, 0
+         SET PC, LTZERO_FALSE
+         SET PUSH, 0xffff
+         SET PC, LTZERO_ENDIF
+ :LTZERO_FALSE
+         SET PUSH, 0
+ :LTZERO_ENDIF
+         SET A, [I]              ; next
+         ADD I, 1
+         SET PC, A
+
+ ;;; 0> ( a -- n )
+ :_GTZERO
+         DAT _LTZERO, 2, "0>", GTZERO
+ :GTZERO
+         SET A, POP
+         IFG A, 0
+         SET PC, GTZERO_TRUE
+         SET PUSH, 0
+         SET PC, GTZERO_ENDIF
+ :GTZERO_TRUE
+         SET PUSH, 0xffff
+ :GTZERO_ENDIF
+         SET A, [I]              ; next
+         ADD I, 1
+         SET PC, A
+
+ ;;; 0<= ( a -- n )
+ :_LTEZERO
+         DAT _LTZERO, 3, "0<=", LTEZERO
+ :LTEZERO
+         SET A, POP
+         IFG A, 0
+         SET PC, LTEZERO_FALSE
+         SET PUSH, 0xffff
+         SET PC, LTEZERO_ENDIF
+ :LTEZERO_FALSE
+         SET PUSH, 0
+ :LTEZERO_ENDIF
+         SET A, [I]              ; next
+         ADD I, 1
+         SET PC, A
+
+ ;;; 0>= ( a -- n )
+ :_GTEZERO
+         DAT _LTEZERO, 3, "0>=", GTEZERO
+ :GTEZERO
+         SET A, POP
+         IFG A, 0
+         SET PC, GTEZERO_TRUE
+         IFE A, 0
+         SET PC, GTEZERO_TRUE
+         SET PUSH, 0
+         SET PC, GTEZERO_ENDIF
+ :GTEZERO_TRUE
+         SET PUSH, 0xffff
+ :GTEZERO_ENDIF
+         SET A, [I]              ; next
+         ADD I, 1
+         SET PC, A
+
+ ;;; AND ( a b -- n )
+ :_AND
+         DAT _GTEZERO, 3, "AND", AND_
+ :AND_
+         SET A, POP
+         AND A, POP
+         SET PUSH, A
+
+         SET A, [I]              ; next
+         ADD I, 1
+         SET PC, A
+
+ ;;; OR ( a b -- n )
+ :_OR
+         DAT _AND, 2, "OR", OR_
+ :OR_
+         SET A, POP
+         BOR A, POP
+         SET PUSH, A
+
+         SET A, [I]              ; next
+         ADD I, 1
+         SET PC, A
+
+ ;;; XOR ( a b -- n )
+ :_XOR
+         DAT _OR, 3, "XOR", XOR_
+ :XOR_
+         SET A, POP
+         XOR A, POP
+         SET PUSH, A
+
+         SET A, [I]              ; next
+         ADD I, 1
+         SET PC, A
+
+ ;;; INVERT ( a -- n )
+ :_INVERT
+         DAT _XOR, 6, "INVERT", INVERT
+ :INVERT
+         SET A, POP
+         XOR A, 0xffff
+         SET PUSH, A
+
+         SET A, [I]              ; next
+         ADD I, 1
+         SET PC, A
+
+ ;;; EXIT ( -- )  Used to exit compiled words
+ :_EXIT
+         DAT _INVERT, 4, "EXIT", EXIT
+ :EXIT
+         SET I, [J]              ; pop return stack into I
+         ADD J, 1
+
+         SET A, [I]              ; next
+         ADD I, 1
+         SET PC, A
+
+ ;;; LIT ( -- lit )  ; pushes next word in instruction stream on stack, then skip it.
+ :_LIT
+         DAT _EXIT, 3, "LIT", LIT
+ :LIT
+         SET PUSH, [I]           ; push next 16-bit word onto parameter stack
+         ADD I, 1                ; skip it
+
+         SET A, [I]              ; next
+         ADD I, 1
+         SET PC, A
+
+ ;;; ! ( data addr -- ) store data at given addr
+ :_STORE
+         DAT _LIT, 1, "!", STORE
+ :STORE
+         SET A, POP
+         SET [A], POP
+
+         SET A, [I]              ; next
+         ADD I, 1
+         SET PC, A
+
+ ;;; @ ( addr -- data ) fetch data at given addr
+ :_FETCH
+         DAT _STORE, 1, "@", FETCH
+ :FETCH
+         SET A, POP
+         SET PUSH, [A]
+
+         SET A, [I]              ; next
+         ADD I, 1
+         SET PC, A
+
+ ;;; +! ( amount addr -- ) add amount to data at given addr
+ :_ADDSTORE
+         DAT _FETCH, 2, "+!", ADDSTORE
+ :ADDSTORE
+         SET A, POP
+         ADD [A], POP
+
+         SET A, [I]              ; next
+         ADD I, 1
+         SET PC, A
+
+ ;;; -! ( amount addr -- ) subtract amount to data at given addr
+ :_SUBSTORE
+         DAT _ADDSTORE, 2, "+!", SUBSTORE
+ :SUBSTORE
+         SET A, POP
+         SUB [A], POP
+
+         SET A, [I]              ; next
+         ADD I, 1
+         SET PC, A
+
+ ;;; >R ( x -- ) push x onto return stack
+ :_RSPPUSH
+         DAT _SUBSTORE, 2, ">R", RSPPUSH
+ :RSPPUSH
+         SET A, POP              ; pop from param stack
+         SUB J, 1                ; push onto return stack
+         SET [J], A
+
+         SET A, [I]              ; next
+         ADD I, 1
+         SET PC, A
+
+ ;;; <R ( -- x ) pop top of return stack
+ :_RSPPOP
+         DAT _RSPPUSH, 2, "<R", RSPPOP
+ :RSPPOP
+         SET A, [J]              ; pop off of return stack
+         ADD J, 1
+         SET PUSH, A             ; push onto param stack
+
+         SET A, [I]              ; next
+         ADD I, 1
+         SET PC, A
+
+ ;;; RSP@ ( -- x ) fetch top of return stack
+ :_RSPFETCH
+         DAT _RSPPOP, 4, "RSP@", RSPFETCH
+ :RSPFETCH
+         SET PUSH, J
+
+         SET A, [I]              ; next
+         ADD I, 1
+         SET PC, A
+
+ ;;; RSP! ( x -- ) store top of return stack
+ :_RSPSTORE
+         DAT _RSPFETCH, 4, "RSP!", RSPSTORE
+ :RSPSTORE
+         SET J, POP
+
+         SET A, [I]              ; next
+         ADD I, 1
+         SET PC, A
+
+ ;;; RDROP ( -- ) drop top of return stack
+ :_RDROP
+         DAT _RSPSTORE, 5, "RDROP", RDROP
+ :RDROP
+         ADD J, 1
+
+         SET A, [I]              ; next
+         ADD I, 1
+         SET PC, A
+
+ ;;; DSP@ ( -- x ) fetch top of parameter stack
+ :_DSPFETCH
+         DAT _RDROP, 4, "DSP@", DSPFETCH
+ :DSPFETCH
+         SET PUSH, SP
+
+         SET A, [I]              ; next
+         ADD I, 1
+         SET PC, A
+
+ ;;; DSP! ( x -- ) store top of parameter stack
+ :_DSPSTORE
+         DAT _DSPFETCH, 4, "DSP!", DSPSTORE
+ :DSPSTORE
+         SET A, POP
+         SET SP, A
+
+         SET A, [I]              ; next
+         ADD I, 1
+         SET PC, A
+
+ ;;;
+ ;;; variables/constants
+ ;;; TODO: these can be macros someday, or inline words?
+
+ ;;; STATE ( -- flag ) true if currently in compliation state
+ :STATE_VAR
+         DAT 0                   ; 0xffff if in compile mode
+ :_STATE
+         DAT _DSPSTORE, 5, "STATE", STATE
+ :STATE
+         SET PUSH, STATE_VAR
+
+         SET A, [I]              ; next
+         ADD I, 1
+         SET PC, A
+
+ ;;; DP ( -- addr ) points to next free word of memory, compiled words go here.
+ :DP_VAR
+         DAT END                 ; free memory ptr
+ :_DP
+         DAT _STATE, 2, "DP", DP
+ :DP
+         SET PUSH, DP_VAR
+
+         SET A, [I]              ; next
+         ADD I, 1
+         SET PC, A
+
+ ;;; LATEST ( -- addr ) dictionary ptr
+ :LATEST_VAR
+         DAT _INTERPRET         ; dictionary ptr
+ :_LATEST
+         DAT _DP, 6, "LATEST", LATEST
+ :LATEST
+         SET PUSH, LATEST_VAR
+
+         SET A, [I]              ; next
+         ADD I, 1
+         SET PC, A
+
+ ;;; BASE ( -- radix ) current base for reading/printing
+ :BASE_VAR
+         DAT 10                  ; current radix for printing reading
+ :_BASE
+         DAT _LATEST, 4, "BASE", BASE
+ :BASE
+         SET PUSH, BASE_VAR
+
+         SET A, [I]              ; next
+         ADD I, 1
+         SET PC, A
+
+ ;;; S0 ( -- addr ) top of parameter stack
+ :S0_VAR
+         DAT 0xffff              ; top of parameter stack
+ :_S0
+         DAT _BASE, 2, "S0", S0
+ :S0
+         SET PUSH, S0_VAR
+
+         SET A, [I]              ; next
+         ADD I, 1
+         SET PC, A
+
+ ;;; R0 ( -- addr ) top of parameter stack
+ :R0_VAR
+         DAT 0x7fff              ; top of return stack
+ :_R0
+         DAT _S0, 2, "R0", R0_
+ :R0_
+         SET PUSH, R0_VAR
+
+         SET A, [I]              ; next
+         ADD I, 1
+         SET PC, A
+
+ ;;; VERSION ( -- version )
+ :VERSION_VAR
+         DAT 1                   ; current vforth version!
+ :_VERSION
+         DAT _R0, 2, "VERSION", VERSION
+ :VERSION
+         SET PUSH, VERSION_VAR
+
+         SET A, [I]              ; next
+         ADD I, 1
+         SET PC, A
+
+ ;;; F_IMMED ( -- mask )
+ :F_IMMED_VAR
+         DAT 0x8000
+ :_F_IMMED
+         DAT _VERSION, 7, "F_IMMED", F_IMMED
+ :F_IMMED
+         SET PUSH, F_IMMED_VAR
+
+         SET A, [I]              ; next
+         ADD I, 1
+         SET PC, A
+
+ ;;; F_HIDDEN ( -- mask )
+ :F_HIDDEN_VAR
+         DAT 0x4000
+ :_F_HIDDEN
+         DAT _F_IMMED, 8, "F_HIDDEN", F_HIDDEN
+ :F_HIDDEN
+         SET PUSH, F_HIDDEN_VAR
+
+         SET A, [I]              ; next
+         ADD I, 1
+         SET PC, A
+
+ ;;; F_LENMASK
+ :F_LENMASK_VAR
+         DAT 0x3fff
+ :_F_LENMASK
+         DAT _F_HIDDEN, 9, "F_LENMASK"
+ :F_LENMASK
+         SET PUSH, F_LENMASK_VAR
+
+         SET A, [I]              ; next
+         ADD I, 1
+         SET PC, A
+
+
+ ;;; DOCOL ( -- addr-of-docol-code )
+ :DOCOL_VAR
+         DAT DOCOL
+ :_DOCOL
+         DAT _F_LENMASK, 5, "DOCOL", DOCOL_
+ :DOCOL_
+         SET PUSH, DOCOL_VAR
+
+         SET A, [I]              ; next
+         ADD I, 1
+         SET PC, A
+
+ ;;; used to interpret compiled words
+ :DOCOL
+         SUB J, 1                ; push I onto return stack
+         SET [J], I
+         ADD A, 1                ; A points to codeword, so make
+         SET I, A                ; I point to first data word
+         SET A, [I]              ; next
+         ADD I, 1
+         SET PC, A
+
+ ;;; DODOES ( -- addr-of-dodoes-code )
+ :DODOES_VAR
+         DAT DODOES
+ :_DODOES
+         DAT _DOCOL, 6, "DODOES", DODOES_
+ :DODOES_
+         SET PUSH, DODOES_VAR
+
+         SET A, [I]              ; next
+         ADD I, 1
+         SET PC, A
+
+ ;;; used interpret variables
+ :DODOES
+         SET A, I
+         ADD A, 1                ; A <- data addr
+         ADD I, [I]              ; set I to point to first behavior word
+         SET PUSH, A             ; push data-addr
+         SET A, [I]              ; next
+         ADD I, 1
+         SET PC, A
+
+ ;;; KEY ( -- key ) currently reads from LINE_BUFFER
+ :_KEY
+         DAT _DODOES, 3, "KEY", KEY
+ :KEY
+         JSR KEY_FUNC
+         SET PUSH, A
+
+         SET A, [I]              ; next
+         ADD I, 1
+         SET PC, A
+
+ ;;; RETURNS next key in A
+ :KEY_FUNC
+         SET A, [CUR_KEY]
+         IFN [A], 0
+         SET PC, KEY_VALID
+         JSR START_PROMPT           ; read more input
+         SET [CUR_KEY], LINE_BUFFER
+         SET [CURSOR], 0x8000       ; reset emit cursor
+         SET PC, KEY_FUNC
+ :KEY_VALID
+         ADD [CUR_KEY], 1
+         SET A, [A]
+         SET PC, POP
+
+ ;;; KEY variables
+ :CUR_KEY
+         DAT LINE_BUFFER
+
+ ;;; EMIT ( key -- ) currently just dumps into SCREEN
+ :_EMIT
+         DAT _KEY, 4, "EMIT", EMIT
+ :EMIT
+         SET A, POP
+         BOR A, 0xF000           ; make it white
+         SET B, [CURSOR]
+         SET [B], A
+         ADD [CURSOR], 1
+
+         SET A, [I]              ; next
+         ADD I, 1
+         SET PC, A
+
+ ;;; EMIT variables
+ :CURSOR
+         DAT 0x8000
+ :SCREEN
+         DAT 0x8000
+
+ ;;; WORD ( -- ptr len ) returns length and ptr to word string
+ ;;; TODO: handle null at end of word instead of just space
+ :_WORD
+         DAT _EMIT, 4, "WORD", WORD_
+ :WORD_
+         JSR WORD_FUNC
+         SET PUSH, B
+         SET PUSH, A
+
+         SET A, [I]              ; next
+         ADD I, 1
+         SET PC, A
+
+ ;;; returns len in A, ptr in B
+ :WORD_FUNC
+ :WORD_SKIP_SPACE
+         JSR KEY_FUNC
+         IFE A, 0x005c          ; if backslash, skip the comment
+         SET PC, WORD_SKIP_LINE
+         IFE A, 0x0020          ; if space, keep looking
+         SET PC, WORD_SKIP_SPACE
+
+         ;; search for end of word storing characters as we go
+         SET X, WORD_BUFFER      ; x is ptr into word_buffer
+ :WORD_EACH_CHAR
+         SET [X], A
+         ADD X, 1
+         JSR KEY_FUNC
+         IFN A, 0x0020           ; if not space keep looping
+         SET PC, WORD_EACH_CHAR
+
+         SUB X, WORD_BUFFER      ; calc length
+         SET A, X                ; A <- length
+         SET B, WORD_BUFFER      ; B <- str addr
+         SET PC, POP             ; return
+
+         ;; skip until new-line
+ :WORD_SKIP_LINE
+         JSR KEY_FUNC
+         IFN A, 0x000a           ; new line
+         SET PC, WORD_SKIP_LINE
+         SET PC, WORD_FUNC
+
+
+ ;;; WORD variables
+ :WORD_BUFFER
+         DAT "0123456789abcdef0123456789abcdef"  ; 32-char word buffer
+
+
+ ;;; NUMBER ( ptr len -- number unconverted-characters )
+ ;;; reads from BASE_VAR
+ :_NUMBER
+         DAT _WORD, 6, "NUMBER", NUMBER
+ :NUMBER
+         SET A, POP              ; A <- len
+         SET B, POP              ; B <- ptr
+         JSR NUMBER_FUNC
+         SET PUSH, B             ; number
+         SET PUSH, A             ; unconverted chars
+
+         SET A, [I]              ; next
+         ADD I, 1
+         SET PC, A
+
+ ;;; input A is len, B is ptr
+ ;;; output A is num unconverted chars, B is result
+ :NUMBER_FUNC
+         IFE A, 0                ; zero-length string
+         SET PC, NUMBER_FAIL
+
+ ;;; start at end of string
+         SET X, B                ; X is work ptr
+         ADD X, A
+         SUB X, 1
+
+         SET C, 1                ; C is factor
+         SET B, 0                ; B is number
+
+ :NUMBER_LOOP
+         SET Y, [X]              ; read char into Y
+
+ ;;;  TODO: handle bases other then 10
+
+         IFG Y, 0x0060           ; if >= 'a'
+         SET PC, NUMBER_LOWER
+         IFG Y, 0x0040           ; if >= 'A'
+         SET PC, NUMBER_UPPER
+         IFG Y, 0x002F           ; if >= '0'
+         SET PC, NUMBER_DIGIT
+
+ :NUMBER_LOWER
+         SET PC, NUMBER_FAIL
+ :NUMBER_UPPER
+         SET PC, NUMBER_FAIL
+ :NUMBER_DIGIT
+         IFG Y, 0x39             ; if char > '9'
+         SET PC, NUMBER_FAIL
+         SUB Y, 0x30             ; 0x30 is 0 - convert digit into number
+         MUL Y, C                ; multiply number by factor
+         ADD B, Y                ; accumulate result in B
+
+         SUB X, 1                ; move str ptr
+         SUB A, 1                ; we converted one character!
+         MUL C, [BASE_VAR]       ; factor *= base
+
+         IFN A, 0
+         SET PC, NUMBER_LOOP
+
+         SET PC, POP             ; done!
+
+ :NUMBER_FAIL
+         SET A, 0
+         SET B, 0
+         SET PC, POP             ; return
+
+ ;;; (FIND) ( addr len -- dictionary-header-addr )  looks up word in dictionary
+ ;;; doesnt find words flagged as hidden
+ :_PAREN_FIND
+         DAT _NUMBER, 6, "(FIND)", PAREN_FIND
+ :PAREN_FIND
+         SET A, POP              ; A <- len
+         SET B, POP              ; B <- addr
+         JSR FIND_FUNC
+         SET PUSH, A
+
+         SET A, [I]              ; next
+         ADD I, 1
+         SET PC, A
+
+ ;;; input: A len, B addr
+ ;;; output: dictionary header addr, or 0 if none found.
+ :FIND_FUNC
+         SET X, [LATEST_VAR]
+ :FIND_WORD_LOOP
+         IFE X, 0                ; end of dictionary
+         SET PC, FIND_NOT_FOUND
+
+         SET C, [1+X]            ; C <- len
+         AND C, 0x7fff           ; mask out F_IMMED flag, but include F_HIDDEN flag
+         IFN A, C                ; compare lengths, This will exclude hidden words.
+         SET PC, FIND_NEXT_WORD
+
+         AND A, 0x7fff           ; mask out F_IMMED flag in A, used for loop termination.
+
+         ;; compare strings
+         SET C, 0                ; loop index
+ :FIND_STRCMP_LOOP
+         IFE C, A
+         SET PC, FIND_STRCMP_SUCCESS
+         SET Y, B
+         ADD Y, C                ; y <- search-string + c
+         SET Z, X
+         ADD Z, 2
+         ADD Z, C                ; z <- dict-string + c
+         IFN [Y], [Z]
+         SET PC, FIND_STRCMP_FAIL
+         ADD C, 1
+         SET PC, FIND_STRCMP_LOOP
+
+ :FIND_STRCMP_SUCCESS
+         SET A, X
+         SET PC, POP             ; return header addr
+
+ :FIND_STRCMP_FAIL
+ :FIND_NEXT_WORD
+         SET X, [X]              ; follow prev ptr
+         SET PC, FIND_WORD_LOOP
+
+ :FIND_NOT_FOUND
+         SET A, 0
+         SET PC, POP             ; return 0
+
+
+ ;;; >CFA ( header-addr -- first-code-addr)  takes header and skips ptr, len & str.
+ :_TOCFA
+         DAT _PAREN_FIND, 4, ">CFA", TOCFA
+ :TOCFA
+         SET A, POP
+         JSR TOCFA_FUNC
+         SET PUSH, A
+
+         SET A, [I]              ; next
+         ADD I, 1
+         SET PC, A
+
+
+ ;;; input: A: header ptr
+ ;;; output: A: code addr ptr
+ :TOCFA_FUNC
+         SET PUSH, B             ; save B
+         SET B, [1+A]            ; read len
+         AND B, 0x7fff           ; mask out flags
+         ADD A, 2                ; skip prev & len
+         ADD A, B                ; skip string
+         SET B, POP              ; restore B
+         SET PC, POP             ; return a + len + 1;
+
+ ;;; >DFA ( header-addr -- first-data-addr)  takes header and skips ptr, len, str
+ ;;;                                         and first word.
+ :_TODFA
+         DAT _TOCFA, 4, ">DFA", DOCOL
+ :TODFA
+         DAT INCR, EXIT
+
+ ;;; HEADER ( addr len -- ) writes word header into free memory
+ :_HEADER
+         DAT _TODFA, 6, "HEADER", HEADER
+ :HEADER
+         SET A, POP                  ; A <- len
+         SET B, POP                  ; B <- addr
+         SET X, [DP_VAR]             ; X <- start of header
+         SET C, X                    ; C <- output ptr
+         SET [C], [LATEST_VAR]       ; write prev
+         ADD C, 1
+         SET [C], A                  ; write len
+         ADD C, 1
+ :HEADER_WRITE_STR                   ; write string word by word
+         IFE A, 0
+         SET PC, HEADER_DONE
+         SET [C], [B]
+         ADD C, 1                    ; C++
+         ADD B, 1                    ; B++
+         SUB A, 1                    ; A--
+         SET PC, HEADER_WRITE_STR
+ :HEADER_DONE
+         SET [LATEST_VAR], X         ; LATEST_VAR points to the header
+         SET [DP_VAR], C             ; DP_VAR points past end of header
+
+         SET A, [I]              ; next
+         ADD I, 1
+         SET PC, A
+
+ ;;; , ( word -- ) stores word at DP then adds 1 to DP
+ :_COMMA
+         DAT _HEADER, 1, ",", COMMA
+ :COMMA
+         SET A, POP
+         JSR COMMA_FUNC
+
+         SET A, [I]              ; next
+         ADD I, 1
+         SET PC, A
+
+ :COMMA_FUNC
+         SET X, [DP_VAR]
+         SET [X], A
+         ADD X, 1
+         SET [DP_VAR], X
+         SET PC, POP
+
+ ;;; [ ( -- ) switch to immediate mode
+ ;;; F_IMMEDATE
+ :_LBRAC
+         DAT _COMMA, 0xf001, "[", LBRAC
+ :LBRAC
+         SET [STATE_VAR], 0
+
+SET [ERRNO], 0xf05b  ; write '['
+JSR PRINT_ERROR_FUNC
+
+         SET A, [I]              ; next
+         ADD I, 1
+         SET PC, A
+
+ ;;; ] ( -- ) switch to compile mode
+ :_RBRAC
+         DAT _LBRAC, 1, "]", RBRAC
+ :RBRAC
+         SET [STATE_VAR], 0xffff
+
+SET [ERRNO], 0xf05d  ; write ']'
+JSR PRINT_ERROR_FUNC
+
+         SET A, [I]              ; next
+         ADD I, 1
+         SET PC, A
+
+ ;;; : ( -- ) defines word!
+ :_COLON
+         DAT _RBRAC, 1, ":", DOCOL
+ :COLON
+        DAT LIT, 0xF03a, ERROR  ; write ':'
+
         DAT WORD_, HEADER
         DAT LIT, DOCOL, COMMA
         DAT LATEST, FETCH, HIDDEN
@@ -1180,8 +1190,12 @@
 
 ;;; ; ( -- ) end of word
 :_SEMICOLON
-        DAT _COLON, 0xf001, ";", DOCOL
+        ;; NOTE: len is flaged as F_IMMED
+	    ;; NOTE: to workaround bug in 0x10co.de 0x3b is semi-colon character
+        DAT _COLON, 0x8001, 0x3b, DOCOL   
 :SEMICOLON
+        DAT LIT, 0xF03b, ERROR  ; write ';'
+
         DAT LIT, EXIT, COMMA
         DAT LATEST, FETCH, HIDDEN
         DAT LBRAC, EXIT
@@ -1189,7 +1203,8 @@
 ;;; IMMEDIATE ( -- ) toggles the F_IMMEDIATE flag on the most recently defined
 ;;;   word, or the current word, when in the middle of a definition
 :_IMMEDIATE
-        DAT _SEMICOLON, 0xf009, IMMEDIATE
+        ;; NOTE: len is flaged as F_IMMED
+        DAT _SEMICOLON, 0x8009, IMMEDIATE
 :IMMEDIATE
         SET A, [LATEST_VAR]
         SET A, 1
@@ -1316,13 +1331,24 @@
         DAT INTERPRET           ; interpret the next word
         DAT BRANCH, 0xfffe      ; loop (indefinitely) 0xfffe is -2
 
+;;; ERROR ( char -- )
+:_ERROR
+        DAT _QUIT, 5, "ERROR", QUIT
+:ERROR
+        SET A, POP
+        SET [ERRNO], A
+        JSR PRINT_ERROR_FUNC
+        SET A, [I]              ; next
+        ADD I, 1
+        SET PC, A
+
 ;;; INTERPRET ( -- )
 :INTERPRET_STR_LEN_VAR
         DAT 0
 :INTERPRET_STR
         DAT 0
 :_INTERPRET
-        DAT _QUIT, 9, "INTERPRET", INTERPRET
+        DAT _ERROR, 9, "INTERPRET", INTERPRET
 :INTERPRET
         ;;; AJT: REMOVE
         SET [ERRNO], 0xF057 ; 'W' for word
@@ -1352,11 +1378,11 @@
         SET PC, INTERPRET_FOUND_IMMEDIATE
 ;;; found not immediate
 
-        IFE [STATE_VAR], 0
+        IFE 0, [STATE_VAR]
         SET PC, INTERPRET_EXECUTE
 
         ;;; AJT: REMOVE
-        SET [ERRNO], 0xF058 ; 'C' for compile
+        SET [ERRNO], 0xF043 ; 'C' for compile
         JSR PRINT_ERROR_FUNC
 
 ;;; found not immediate compiling
@@ -1393,9 +1419,19 @@
         IFN [STATE_VAR], 0
         SET PC, INTERPRET_LITERAL_COMPILE
 ;;; literal execute
+
+        ;;; AJT: REMOVE
+        SET [ERRNO], 0xF058 ; 'X' for execute
+        JSR PRINT_ERROR_FUNC
+
         SET PUSH, B             ; push number result on stack
         SET PC, INTERPRET_NEXT
 :INTERPRET_LITERAL_COMPILE
+
+        ;;; AJT: REMOVE
+        SET [ERRNO], 0xF043 ; 'C' for compile
+        JSR PRINT_ERROR_FUNC
+
         SET A, LIT
         JSR COMMA_FUNC          ; write LIT code word to dp
         SET A, B

@@ -1,3 +1,12 @@
+;; vforth - interactive forth interpreter for dcpu16
+;; TODO:
+;;   * : doesnt work.  not sure why, i get different results on different emulators.
+;;   * The letter spew on the second line is for debugging, need more meaningfull error messages.
+;;   * input for bases other then 10 are broken.
+;;   * implement . and .S
+;;   * test primitive words
+;;   * bootstrap more compiled words
+
 :START
         SET J, [R0_VAR]
         SET I, [COLD_START]
@@ -35,8 +44,8 @@
 ;;; Z is top of stack.
 :SHOW_STACK_IN_XYZ
         SET A, SP
-        SET X, [A+2]
-        SET Y, [A+1]
+        SET X, [2+A]
+        SET Y, [1+A]
         SET Z, [A]
         SET A, [I]              ; next
         ADD I, 1
@@ -44,8 +53,8 @@
 
 :SHOW_STACK_IN_XYZ_FUNC
         SET A, SP
-        SET X, [A+2]
-        SET Y, [A+1]
+        SET X, [2+A]
+        SET Y, [1+A]
         SET Z, [A]
         SET PC, POP
 
@@ -105,7 +114,7 @@
         DAT _DUP, 4, "OVER", OVER
 :OVER
         SET A, SP               ; get second element of stack
-        SET PUSH, [A+1]         ; and push it on top
+        SET PUSH, [1+A]         ; and push it on top
 
         SET A, [I]              ; next
         ADD I, 1
@@ -703,7 +712,7 @@
 
 ;;; LATEST ( -- addr ) dictionary ptr
 :LATEST_VAR
-        DAT _INTERPRET         ; dictionary ptr TODO: update to last word
+        DAT _INTERPRET         ; dictionary ptr
 :_LATEST
         DAT _DP, 6, "LATEST", LATEST
 :LATEST
@@ -739,7 +748,7 @@
 
 ;;; R0 ( -- addr ) top of parameter stack
 :R0_VAR
-        DAT 0x1000              ; top of return stack
+        DAT 0x7fff              ; top of return stack
 :_R0
         DAT _S0, 2, "R0", R0_
 :R0_
@@ -1028,7 +1037,7 @@
         IFE X, 0                ; end of dictionary
         SET PC, FIND_NOT_FOUND
 
-        SET C, [X+1]            ; B <- len
+        SET C, [1+X]            ; C <- len
         AND C, 0x7fff           ; mask out F_IMMED flag, but include F_HIDDEN flag
         IFN A, C                ; compare lengths, This will exclude hidden words.
         SET PC, FIND_NEXT_WORD
@@ -1079,7 +1088,7 @@
 ;;; output: A: code addr ptr
 :TOCFA_FUNC
         SET PUSH, B             ; save B
-        SET B, [A+1]            ; read len
+        SET B, [1+A]            ; read len
         AND B, 0x7fff           ; mask out flags
         ADD A, 2                ; skip prev & len
         ADD A, B                ; skip string
@@ -1320,6 +1329,7 @@
         JSR PRINT_ERROR_FUNC
 
         JSR WORD_FUNC           ; returns len in A, ptr in B
+
         SET [INTERPRET_STR_LEN_VAR], A
         SET [INTERPRET_STR], B
 
@@ -1333,7 +1343,7 @@
         SET [ERRNO], 0xF046 ; 'F' for found
         JSR PRINT_ERROR_FUNC
 
-        SET B, [A+1]
+        SET B, [1+A]
         AND B, 0x8000           ; B <- (len & 0x8000) i.e. F_IMMED
 
         SET Z, A                ; Z <- dictionary word
@@ -1341,6 +1351,7 @@
         IFN B, 0
         SET PC, INTERPRET_FOUND_IMMEDIATE
 ;;; found not immediate
+
         IFE [STATE_VAR], 0
         SET PC, INTERPRET_EXECUTE
 
@@ -1406,14 +1417,12 @@
         JSR PRINT_ERROR_FUNC
         DAT 0xeee0              ; crash with illegal opcode
 
-;;; print ABC
-;;:INPUT_BUFFER
-;;        DAT "65 0 + EMIT 65 1 + EMIT 65 2 + EMIT", 0x20, 0
 
 ;;; 64 char line input buffer
 :LINE_BUFFER
-DAT ": XXX EMIT ; 66 XXX", 0x20, 0
-;;DAT 0x3a, 0x20, 0x44, 0x4f, 0x55, 0x42, 0x4c, 0x45, 0x20, 0x32, 0x20, 0x2a, 0x20, 0x3b, 0x20, 0
+        DAT "87 EMIT 101 EMIT 108 EMIT 99 EMIT 111 EMIT 109 EMIT 101 "
+        DAT "EMIT 32 EMIT 116 EMIT 111 EMIT 32 EMIT 118 EMIT 102 EMIT 111 "
+        DAT "EMIT 114 EMIT 116 EMIT 104 EMIT", 0x20, 0x00
         DAT "0123456789abcdef0123456789abcdef"
         DAT "0123456789abcdef0123456789abcdef"
         DAT "0123456789abcdef0123456789abcdef"
